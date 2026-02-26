@@ -186,6 +186,24 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "bar_axis_title",
+                label: "Value axis title",
+                type: "String",
+                showIf: { plot_type: "bar" },
+              },
+              {
+                name: "lower_limit",
+                label: "Lower value limit",
+                type: "Float",
+                showIf: { plot_type: "bar" },
+              },
+              {
+                name: "upper_limit",
+                label: "Upper value limit",
+                type: "Float",
+                showIf: { plot_type: "bar" },
+              },
+              {
                 name: "smooth",
                 label: "Smooth line",
                 type: "Bool",
@@ -272,6 +290,11 @@ const buildChartScript = (
     pie_label_position,
     donut_ring_width,
     title,
+    bar_axis_title,
+    statistic,
+    outcomes,
+    lower_limit,
+    upper_limit,
   }
 ) => {
   const titleOption = title ? `title: { text: ${JSON.stringify(title)} },` : "";
@@ -353,7 +376,33 @@ const buildChartScript = (
         type: "category",
         data: categories,
       });
-      const valueAxis = JSON.stringify({ type: "value" });
+      const axisTitle =
+        bar_axis_title ||
+        `${statistic || "Count"} ${(outcomes || [])
+          .map((o) => o.outcome_field)
+          .join(", ")}`;
+      const limits = {
+        ...(lower_limit != null && { min: lower_limit }),
+        ...(upper_limit != null && { max: upper_limit }),
+      };
+      const valueAxis = JSON.stringify(
+        horizontal
+          ? {
+              type: "value",
+              name: axisTitle,
+              nameLocation: "middle",
+              nameGap: 30,
+              ...limits,
+            }
+          : {
+              type: "value",
+              name: axisTitle,
+              nameLocation: "middle",
+              nameRotate: 90,
+              nameGap: 40,
+              ...limits,
+            }
+      );
       return `
         var option = {
             ${titleOption}
@@ -545,7 +594,7 @@ const prepChartData = (
   if (plot_series === "group_by_field" && group_field) {
     const diffvals = new Set(rows.map((r) => r[group_field]));
     return [...diffvals].map((val) => ({
-      name: String(applyNullLabel(val) ?? "null"),
+      name: val === null ? "null" : String(val),
       points: rows
         .filter((r) => r[group_field] === val)
         .map((r) => [r[x_field], r[y_field]]),
