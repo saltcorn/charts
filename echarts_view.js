@@ -198,6 +198,26 @@ const configuration_workflow = () =>
                 showIf: { plot_type: "pie" },
               },
               {
+                name: "donut_ring_width",
+                label: "Ring width (%)",
+                type: "Integer",
+                showIf: { plot_type: "pie", pie_donut: true },
+                default: 50,
+              },
+              {
+                name: "pie_label_position",
+                label: "Label position",
+                type: "String",
+                showIf: { plot_type: "pie" },
+                attributes: {
+                  options: [
+                    { label: "Inside", name: "inside" },
+                    { label: "Outside", name: "outside" },
+                    { label: "Legend", name: "legend" },
+                  ],
+                },
+              },
+              {
                 name: "include_fml",
                 label: "Row inclusion formula",
                 class: "validate-expression",
@@ -229,7 +249,16 @@ const get_state_fields = async (table_id, viewname, config) => {
 
 const buildChartScript = (
   data,
-  { plot_type, plot_series, smooth, bar_stack, bar_orientation, pie_donut }
+  {
+    plot_type,
+    plot_series,
+    smooth,
+    bar_stack,
+    bar_orientation,
+    pie_donut,
+    pie_label_position,
+    donut_ring_width,
+  }
 ) => {
   switch (plot_type) {
     case "line":
@@ -321,12 +350,54 @@ const buildChartScript = (
 
     case "pie": {
       const pieData = JSON.stringify(data);
-      const radius = pie_donut ? "['40%', '70%']" : "'50%'";
+      const radius = pie_donut
+        ? `['${Math.round(
+            70 - ((donut_ring_width || 50) / 100) * 70
+          )}%', '70%']`
+        : "'50%'";
+      const useLegend = pie_label_position === "legend";
+      const useOutside = pie_label_position === "outside";
+      if (useOutside) {
+        return `
+          var option = {
+            series: [{
+              type: 'pie',
+              radius: ${radius},
+              label: {
+                backgroundColor: '#F6F8FC',
+                borderColor: '#8C8D8E',
+                borderWidth: 1,
+                borderRadius: 4,
+                formatter: '  {b|{b}:}  {val|{c}}  ',
+                rich: {
+                  b: {
+                    color: '#4C5058',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    lineHeight: 33
+                  },
+                  val: {
+                    color: '#4C5058',
+                    fontSize: 16
+                  }
+                }
+              },
+              labelLine: { length: 30 },
+              data: ${pieData}
+            }]
+          };
+          myChart.setOption(option);`;
+      }
+      const label = useLegend
+        ? { position: "inside", formatter: "{c}" }
+        : { position: "inside", formatter: "{b}\n{c}" };
       return `
         var option = {
+          ${useLegend ? "legend: {}," : ""}
           series: [{
             type: 'pie',
             radius: ${radius},
+            label: ${JSON.stringify(label)},
             data: ${pieData}
           }]
         };
