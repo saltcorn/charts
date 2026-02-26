@@ -241,6 +241,14 @@ const configuration_workflow = () =>
                     .join(", "),
                 type: "String",
               },
+              {
+                name: "null_label",
+                label: "Label for missing values",
+                type: "String",
+                showIf: {
+                  plot_type: ["bar", "pie", "line", "area", "scatter"],
+                },
+              },
             ],
           });
         },
@@ -486,8 +494,11 @@ const prepChartData = (
     statistic,
     group_field,
     histogram_field,
+    null_label,
   }
 ) => {
+  const applyNullLabel = (v) =>
+    (v === null || v === "") && null_label ? null_label : v;
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
@@ -509,13 +520,13 @@ const prepChartData = (
       return groupRows.length;
     };
     const allCategories = [
-      ...new Set(rows.map((r) => String(r[factor_field]))),
+      ...new Set(rows.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
     if (plot_type === "pie") {
       return allCategories.map((cat) => ({
         name: cat,
         value: aggregateField(
-          rows.filter((r) => String(r[factor_field]) === cat),
+          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           outcome_field
         ),
       }));
@@ -524,7 +535,7 @@ const prepChartData = (
       name: of || "Count",
       values: allCategories.map((cat) =>
         aggregateField(
-          rows.filter((r) => String(r[factor_field]) === cat),
+          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           of
         )
       ),
@@ -534,7 +545,7 @@ const prepChartData = (
   if (plot_series === "group_by_field" && group_field) {
     const diffvals = new Set(rows.map((r) => r[group_field]));
     return [...diffvals].map((val) => ({
-      name: val === null ? "null" : String(val),
+      name: String(applyNullLabel(val) ?? "null"),
       points: rows
         .filter((r) => r[group_field] === val)
         .map((r) => [r[x_field], r[y_field]]),
