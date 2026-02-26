@@ -218,6 +218,11 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "title",
+                label: "Plot title",
+                type: "String",
+              },
+              {
                 name: "include_fml",
                 label: "Row inclusion formula",
                 class: "validate-expression",
@@ -258,8 +263,10 @@ const buildChartScript = (
     pie_donut,
     pie_label_position,
     donut_ring_width,
+    title,
   }
 ) => {
+  const titleOption = title ? `title: { text: ${JSON.stringify(title)} },` : "";
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
@@ -271,6 +278,7 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             legend: {},
@@ -280,6 +288,7 @@ const buildChartScript = (
       }
       return `
         var option = {
+            ${titleOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'line', smooth: ${!!smooth}, data: ${JSON.stringify(
@@ -299,6 +308,7 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             legend: {},
@@ -308,6 +318,7 @@ const buildChartScript = (
       }
       return `
         var option = {
+            ${titleOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{
@@ -337,6 +348,7 @@ const buildChartScript = (
       const valueAxis = JSON.stringify({ type: "value" });
       return `
         var option = {
+            ${titleOption}
           ${
             horizontal
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
@@ -354,12 +366,13 @@ const buildChartScript = (
         ? `['${Math.round(
             70 - ((donut_ring_width || 50) / 100) * 70
           )}%', '70%']`
-        : "'50%'";
+        : "'70%'";
       const useLegend = pie_label_position === "legend";
       const useOutside = pie_label_position === "outside";
       if (useOutside) {
         return `
           var option = {
+            ${titleOption}
             series: [{
               type: 'pie',
               radius: ${radius},
@@ -393,6 +406,7 @@ const buildChartScript = (
         : { position: "inside", formatter: "{b}\n{c}" };
       return `
         var option = {
+            ${titleOption}
           ${useLegend ? "legend: {}," : ""}
           series: [{
             type: 'pie',
@@ -413,6 +427,7 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             legend: {},
@@ -422,6 +437,7 @@ const buildChartScript = (
       }
       return `
         var option = {
+            ${titleOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'scatter', data: ${JSON.stringify(data)} }]
@@ -432,6 +448,7 @@ const buildChartScript = (
       return `
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
+            ${titleOption}
           dataset: [
             { source: ${JSON.stringify(data)} },
             { transform: { type: 'ecStat:histogram', config: {} } }
