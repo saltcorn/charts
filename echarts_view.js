@@ -273,6 +273,29 @@ const configuration_workflow = () =>
                 type: "Bool",
                 showIf: { plot_type: ["line", "area", "scatter", "bar"] },
               },
+              { input_type: "section_header", label: "Margins" },
+              {
+                name: "mleft",
+                label: "Left (px)",
+                type: "Integer",
+                attributes: { asideNext: true },
+              },
+              {
+                name: "mright",
+                label: "Right (px)",
+                type: "Integer",
+              },
+              {
+                name: "mtop",
+                label: "Top (px)",
+                type: "Integer",
+                attributes: { asideNext: true },
+              },
+              {
+                name: "mbottom",
+                label: "Bottom (px)",
+                type: "Integer",
+              },
             ],
           });
         },
@@ -302,10 +325,37 @@ const buildChartScript = (
     lower_limit,
     upper_limit,
     show_legend,
+    mleft,
+    mright,
+    mtop,
+    mbottom,
   }
 ) => {
-  const titleOption = title ? `title: { text: ${JSON.stringify(title)} },` : "";
-  const legendOption = show_legend ? "legend: {}," : "";
+  const titleHeight = 30;
+  const titleObj = title
+    ? {
+        text: title,
+        ...(mtop != null && { top: mtop }),
+        ...(mleft != null && { left: mleft }),
+      }
+    : null;
+  const titleOption = titleObj ? `title: ${JSON.stringify(titleObj)},` : "";
+  const legendHeight = 50;
+  const legendObj = show_legend
+    ? { ...(mbottom != null && { bottom: mbottom }) }
+    : null;
+  const legendOption = legendObj ? `legend: ${JSON.stringify(legendObj)},` : "";
+  const gridObj = {
+    ...(mleft != null && { left: mleft }),
+    ...(mright != null && { right: mright }),
+    ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
+    ...(mbottom != null && {
+      bottom: mbottom + (show_legend ? legendHeight : 0),
+    }),
+  };
+  const gridOption = Object.keys(gridObj).length
+    ? `grid: ${JSON.stringify(gridObj)},`
+    : "";
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
@@ -318,6 +368,7 @@ const buildChartScript = (
         return `
           var option = {
             ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             ${legendOption}
@@ -328,6 +379,7 @@ const buildChartScript = (
       return `
         var option = {
             ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'line', smooth: ${!!smooth}, data: ${JSON.stringify(
@@ -348,6 +400,7 @@ const buildChartScript = (
         return `
           var option = {
             ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             ${legendOption}
@@ -358,6 +411,7 @@ const buildChartScript = (
       return `
         var option = {
             ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{
@@ -414,6 +468,7 @@ const buildChartScript = (
       return `
         var option = {
             ${titleOption}
+            ${gridOption}
           ${
             horizontal
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
@@ -508,6 +563,7 @@ const buildChartScript = (
         return `
           var option = {
             ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
             ${legendOption}
@@ -518,6 +574,7 @@ const buildChartScript = (
       return `
         var option = {
             ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'scatter', data: ${JSON.stringify(data)} }]
@@ -529,6 +586,7 @@ const buildChartScript = (
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
             ${titleOption}
+            ${gridOption}
           dataset: [
             { source: ${JSON.stringify(data)} },
             { transform: { type: 'ecStat:histogram', config: {} } }
