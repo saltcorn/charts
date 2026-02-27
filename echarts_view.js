@@ -438,18 +438,33 @@ const buildChartScript = (
                 borderColor: '#8C8D8E',
                 borderWidth: 1,
                 borderRadius: 4,
-                formatter: '  {b|{b}:}  {val|{c}}  ',
+                formatter: '  {b|{b}}\\n{hr|}\\n  {val|{c}} {per|{d}%} ',
                 rich: {
+                  hr: {
+                    borderColor: '#8C8D8E',
+                    width: '100%',
+                    borderWidth: 1,
+                    height: 0,
+                  },
                   b: {
                     color: '#4C5058',
                     fontSize: 16,
                     fontWeight: 'bold',
-                    lineHeight: 33
+                    lineHeight: 25,
                   },
                   val: {
                     color: '#4C5058',
-                    fontSize: 16
-                  }
+                    fontSize: 16,
+                    lineHeight: 25,
+                  },
+                  per: {
+                    color: '#fff',
+                    fontSize: 14,
+                    backgroundColor: '#4C5058',
+                    borderRadius: 4,
+                    padding: [2, 3],
+                    lineHeight: 25,
+                  },
                 }
               },
               labelLine: { length: 30 },
@@ -459,8 +474,8 @@ const buildChartScript = (
           myChart.setOption(option);`;
       }
       const label = useLegend
-        ? { position: "inside", formatter: "{c}" }
-        : { position: "inside", formatter: "{b}\n{c}" };
+        ? { position: "inside", formatter: "{c} ({d}%)" }
+        : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
       return `
         var option = {
             ${titleOption}
@@ -547,7 +562,7 @@ const prepChartData = (
   }
 ) => {
   const applyNullLabel = (v) =>
-    (v === null || v === "") && null_label ? null_label : v;
+    (v === null || v === "") && null_label ? null_label : v || "null";
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
