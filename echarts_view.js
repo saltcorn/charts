@@ -267,6 +267,12 @@ const configuration_workflow = () =>
                   plot_type: ["bar", "pie", "line", "area", "scatter"],
                 },
               },
+              {
+                name: "show_legend",
+                label: "Show legend",
+                type: "Bool",
+                showIf: { plot_type: ["line", "area", "scatter", "bar"] },
+              },
             ],
           });
         },
@@ -295,9 +301,11 @@ const buildChartScript = (
     outcomes,
     lower_limit,
     upper_limit,
+    show_legend,
   }
 ) => {
   const titleOption = title ? `title: { text: ${JSON.stringify(title)} },` : "";
+  const legendOption = show_legend ? "legend: {}," : "";
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
@@ -312,7 +320,7 @@ const buildChartScript = (
             ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
@@ -342,7 +350,7 @@ const buildChartScript = (
             ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
@@ -411,7 +419,7 @@ const buildChartScript = (
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
               : `xAxis: ${categoryAxis}, yAxis: ${valueAxis}`
           },
-          legend: {},
+          ${legendOption}
           series: ${seriesArr}
         };
         myChart.setOption(option);`;
@@ -502,7 +510,7 @@ const buildChartScript = (
             ${titleOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
