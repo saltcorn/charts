@@ -2,11 +2,13 @@ const Workflow = require("@saltcorn/data/models/workflow");
 const Form = require("@saltcorn/data/models/form");
 const FieldRepeat = require("@saltcorn/data/models/fieldrepeat");
 const Table = require("@saltcorn/data/models/table");
-const { div, script, domReady } = require("@saltcorn/markup/tags");
+const { div, script, domReady, code } = require("@saltcorn/markup/tags");
 const {
   readState,
   stateFieldsToWhere,
 } = require("@saltcorn/data/plugin-helper");
+const { jsexprToWhere } = require("@saltcorn/data/models/expression");
+const { mergeIntoWhere } = require("@saltcorn/data/utils");
 
 const multiAblePlots = ["line", "area", "scatter"];
 
@@ -184,6 +186,24 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "bar_axis_title",
+                label: "Value axis title",
+                type: "String",
+                showIf: { plot_type: "bar" },
+              },
+              {
+                name: "lower_limit",
+                label: "Lower value limit",
+                type: "Float",
+                showIf: { plot_type: "bar" },
+              },
+              {
+                name: "upper_limit",
+                label: "Upper value limit",
+                type: "Float",
+                showIf: { plot_type: "bar" },
+              },
+              {
                 name: "smooth",
                 label: "Smooth line",
                 type: "Bool",
@@ -194,6 +214,87 @@ const configuration_workflow = () =>
                 label: "Donut",
                 type: "Bool",
                 showIf: { plot_type: "pie" },
+              },
+              {
+                name: "donut_ring_width",
+                label: "Ring width (%)",
+                type: "Integer",
+                showIf: { plot_type: "pie", pie_donut: true },
+                default: 50,
+              },
+              {
+                name: "pie_label_position",
+                label: "Label position",
+                type: "String",
+                showIf: { plot_type: "pie" },
+                attributes: {
+                  options: [
+                    { label: "Inside", name: "inside" },
+                    { label: "Outside", name: "outside" },
+                    { label: "Legend", name: "legend" },
+                  ],
+                },
+              },
+              {
+                name: "title",
+                label: "Plot title",
+                type: "String",
+              },
+              {
+                name: "include_fml",
+                label: "Row inclusion formula",
+                class: "validate-expression",
+                sublabel:
+                  "Only include rows where this formula is true. " +
+                  "In scope: " +
+                  [
+                    ...fields.map((f) => f.name),
+                    "user",
+                    "year",
+                    "month",
+                    "day",
+                    "today()",
+                  ]
+                    .map((s) => code(s))
+                    .join(", "),
+                type: "String",
+              },
+              {
+                name: "null_label",
+                label: "Label for missing values",
+                type: "String",
+                showIf: {
+                  plot_type: ["bar", "pie", "line", "area", "scatter"],
+                },
+              },
+              {
+                name: "show_legend",
+                label: "Show legend",
+                type: "Bool",
+                showIf: { plot_type: ["line", "area", "scatter", "bar"] },
+              },
+              { input_type: "section_header", label: "Margins" },
+              {
+                name: "mleft",
+                label: "Left (px)",
+                type: "Integer",
+                attributes: { asideNext: true },
+              },
+              {
+                name: "mright",
+                label: "Right (px)",
+                type: "Integer",
+              },
+              {
+                name: "mtop",
+                label: "Top (px)",
+                type: "Integer",
+                attributes: { asideNext: true },
+              },
+              {
+                name: "mbottom",
+                label: "Bottom (px)",
+                type: "Integer",
               },
             ],
           });
@@ -208,8 +309,53 @@ const get_state_fields = async (table_id, viewname, config) => {
 
 const buildChartScript = (
   data,
-  { plot_type, plot_series, smooth, bar_stack, bar_orientation, pie_donut }
+  {
+    plot_type,
+    plot_series,
+    smooth,
+    bar_stack,
+    bar_orientation,
+    pie_donut,
+    pie_label_position,
+    donut_ring_width,
+    title,
+    bar_axis_title,
+    statistic,
+    outcomes,
+    lower_limit,
+    upper_limit,
+    show_legend,
+    mleft,
+    mright,
+    mtop,
+    mbottom,
+  }
 ) => {
+  const titleHeight = 30;
+  const titleObj = title
+    ? {
+        text: title,
+        ...(mtop != null && { top: mtop }),
+        ...(mleft != null && { left: mleft }),
+      }
+    : null;
+  const titleOption = titleObj ? `title: ${JSON.stringify(titleObj)},` : "";
+  const legendHeight = 50;
+  const legendObj = show_legend
+    ? { ...(mbottom != null && { bottom: mbottom }) }
+    : null;
+  const legendOption = legendObj ? `legend: ${JSON.stringify(legendObj)},` : "";
+  const gridObj = {
+    ...(mleft != null && { left: mleft }),
+    ...(mright != null && { right: mright }),
+    ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
+    ...(mbottom != null && {
+      bottom: mbottom + (show_legend ? legendHeight : 0),
+    }),
+  };
+  const gridOption = Object.keys(gridObj).length
+    ? `grid: ${JSON.stringify(gridObj)},`
+    : "";
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
@@ -221,15 +367,19 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
       }
       return `
         var option = {
+            ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'line', smooth: ${!!smooth}, data: ${JSON.stringify(
@@ -249,15 +399,19 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
       }
       return `
         var option = {
+            ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{
@@ -284,15 +438,43 @@ const buildChartScript = (
         type: "category",
         data: categories,
       });
-      const valueAxis = JSON.stringify({ type: "value" });
+      const axisTitle =
+        bar_axis_title ||
+        `${statistic || "Count"} ${(outcomes || [])
+          .map((o) => o.outcome_field)
+          .join(", ")}`;
+      const limits = {
+        ...(lower_limit != null && { min: lower_limit }),
+        ...(upper_limit != null && { max: upper_limit }),
+      };
+      const valueAxis = JSON.stringify(
+        horizontal
+          ? {
+              type: "value",
+              name: axisTitle,
+              nameLocation: "middle",
+              nameGap: 30,
+              ...limits,
+            }
+          : {
+              type: "value",
+              name: axisTitle,
+              nameLocation: "middle",
+              nameRotate: 90,
+              nameGap: 40,
+              ...limits,
+            }
+      );
       return `
         var option = {
+            ${titleOption}
+            ${gridOption}
           ${
             horizontal
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
               : `xAxis: ${categoryAxis}, yAxis: ${valueAxis}`
           },
-          legend: {},
+          ${legendOption}
           series: ${seriesArr}
         };
         myChart.setOption(option);`;
@@ -300,12 +482,71 @@ const buildChartScript = (
 
     case "pie": {
       const pieData = JSON.stringify(data);
-      const radius = pie_donut ? "['40%', '70%']" : "'50%'";
+      const radius = pie_donut
+        ? `['${Math.round(
+            70 - ((donut_ring_width || 50) / 100) * 70
+          )}%', '70%']`
+        : "'70%'";
+      const useLegend = pie_label_position === "legend";
+      const useOutside = pie_label_position === "outside";
+      if (useOutside) {
+        return `
+          var option = {
+            ${titleOption}
+            series: [{
+              type: 'pie',
+              radius: ${radius},
+              label: {
+                backgroundColor: '#F6F8FC',
+                borderColor: '#8C8D8E',
+                borderWidth: 1,
+                borderRadius: 4,
+                formatter: '  {b|{b}}\\n{hr|}\\n  {val|{c}} {per|{d}%} ',
+                rich: {
+                  hr: {
+                    borderColor: '#8C8D8E',
+                    width: '100%',
+                    borderWidth: 1,
+                    height: 0,
+                  },
+                  b: {
+                    color: '#4C5058',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    lineHeight: 25,
+                  },
+                  val: {
+                    color: '#4C5058',
+                    fontSize: 16,
+                    lineHeight: 25,
+                  },
+                  per: {
+                    color: '#fff',
+                    fontSize: 14,
+                    backgroundColor: '#4C5058',
+                    borderRadius: 4,
+                    padding: [2, 3],
+                    lineHeight: 25,
+                  },
+                }
+              },
+              labelLine: { length: 30 },
+              data: ${pieData}
+            }]
+          };
+          myChart.setOption(option);`;
+      }
+      const label = useLegend
+        ? { position: "inside", formatter: "{c} ({d}%)" }
+        : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
       return `
         var option = {
+            ${titleOption}
+          ${useLegend ? "legend: {}," : ""}
           series: [{
             type: 'pie',
             radius: ${radius},
+            label: ${JSON.stringify(label)},
             data: ${pieData}
           }]
         };
@@ -321,15 +562,19 @@ const buildChartScript = (
         }));
         return `
           var option = {
+            ${titleOption}
+            ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            legend: {},
+            ${legendOption}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
       }
       return `
         var option = {
+            ${titleOption}
+            ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [{ type: 'scatter', data: ${JSON.stringify(data)} }]
@@ -340,6 +585,8 @@ const buildChartScript = (
       return `
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
+            ${titleOption}
+            ${gridOption}
           dataset: [
             { source: ${JSON.stringify(data)} },
             { transform: { type: 'ecStat:histogram', config: {} } }
@@ -377,8 +624,11 @@ const prepChartData = (
     statistic,
     group_field,
     histogram_field,
+    null_label,
   }
 ) => {
+  const applyNullLabel = (v) =>
+    (v === null || v === "") && null_label ? null_label : v || "null";
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
@@ -400,13 +650,13 @@ const prepChartData = (
       return groupRows.length;
     };
     const allCategories = [
-      ...new Set(rows.map((r) => String(r[factor_field]))),
+      ...new Set(rows.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
     if (plot_type === "pie") {
       return allCategories.map((cat) => ({
         name: cat,
         value: aggregateField(
-          rows.filter((r) => String(r[factor_field]) === cat),
+          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           outcome_field
         ),
       }));
@@ -415,7 +665,7 @@ const prepChartData = (
       name: of || "Count",
       values: allCategories.map((cat) =>
         aggregateField(
-          rows.filter((r) => String(r[factor_field]) === cat),
+          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           of
         )
       ),
@@ -453,13 +703,19 @@ const loadRows = async (
     outcomes,
     group_field,
     histogram_field,
+    include_fml,
   },
-  state
+  state,
+  req
 ) => {
   const table = await Table.findOne({ id: table_id });
   const fields = await table.getFields();
   readState(state, fields);
   const where = await stateFieldsToWhere({ fields, state });
+  if (include_fml) {
+    const ctx = { ...state, user_id: req?.user?.id || null, user: req?.user };
+    mergeIntoWhere(where, jsexprToWhere(include_fml, ctx, fields) || {});
+  }
   const joinFields = {};
   const qfields = [];
 
@@ -524,7 +780,12 @@ const loadRows = async (
 };
 
 const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
-  const { rows, joinedConfigKey } = await loadRows(table_id, config, state);
+  const { rows, joinedConfigKey } = await loadRows(
+    table_id,
+    config,
+    state,
+    req
+  );
   const effectiveConfig = joinedConfigKey
     ? { ...config, [joinedConfigKey]: "__groupjoin" }
     : config;
