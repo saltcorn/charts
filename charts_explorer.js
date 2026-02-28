@@ -3,10 +3,12 @@ const Form = require("@saltcorn/data/models/form");
 const Table = require("@saltcorn/data/models/table");
 const View = require("@saltcorn/data/models/view");
 const { renderForm } = require("@saltcorn/markup");
-const { pre, code, script } = require("@saltcorn/markup/tags");
+const { pre, code, script, div } = require("@saltcorn/markup/tags");
 const { getState } = require("@saltcorn/data/db/state");
 const { buildChartsForm } = require("./charts_form");
 const { run: renderChart } = require("./echarts_view");
+
+const CONTAINER_ID = "CONTAINER_ID";
 
 const configuration_workflow = () =>
   new Workflow({
@@ -40,7 +42,7 @@ const getForm = async ({ viewname, body }) => {
   return new Form({
     action: `/view/${viewname}`,
     fields,
-    onChange: "$(this).submit()",
+    onChange: "chartsExplorerRefresh(this)",
     noSubmitButton: true,
     additionalButtons: [
       {
@@ -54,18 +56,28 @@ const getForm = async ({ viewname, body }) => {
 
 const js = (viewname) =>
   script(`
+function chartsExplorerRefresh(el) {
+  const form = $(el).closest('form');
+  $.post(form.attr('action'), form.serialize(), function(html) {
+    $('#${CONTAINER_ID}').html(html);
+    apply_showif();
+  });
+}
 function save_as_view(that) {
   const form = $(that).closest('form');
   const newviewname = prompt("Please enter the name of the view to be saved", "");
   if(!newviewname) return;
-  $('input[name=newviewname]').val(newviewname)
-  view_post("${viewname}", "save_as_view", $(form).serialize())
+  $('input[name=newviewname]').val(newviewname);
+  view_post("${viewname}", "save_as_view", $(form).serialize());
 }
 `);
 
 const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
   const form = await getForm({ viewname });
-  return renderForm(form, req.csrfToken());
+  return div(
+    { id: CONTAINER_ID },
+    renderForm(form, req.csrfToken()) + js(viewname)
+  );
 };
 
 const runPost = async (
@@ -93,11 +105,12 @@ const runPost = async (
   }
   form.hasErrors = false;
   form.errors = {};
-  res.sendWrap("Charts Explorer", [
-    renderForm(form, req.csrfToken()),
-    js(viewname),
-    plot,
-  ]);
+  const content = renderForm(form, req.csrfToken()) + js(viewname) + plot;
+  if (req.xhr) {
+    res.send(content);
+  } else {
+    res.sendWrap("Charts Explorer", div({ id: CONTAINER_ID }, content));
+  }
 };
 
 const save_as_view = async (table_id, viewname, config, body, { req }) => {
