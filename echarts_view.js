@@ -321,6 +321,30 @@ const buildChartScript = (
         myChart.setOption(option);`;
     }
 
+    case "funnel": {
+      const legendBottom = mbottom ?? 0;
+      const funnelSeries = JSON.stringify({
+        name: "Funnel",
+        type: "funnel",
+        sort: "descending",
+        gap: 2,
+        ...(mleft != null && { left: mleft }),
+        ...(mright != null && { right: mright }),
+        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
+        bottom: legendBottom + legendHeight,
+        label: { show: true, position: "inside", formatter: "{d}%" },
+        data,
+      });
+      return `
+        var option = {
+          ${titleOption}
+          legend: { bottom: ${legendBottom} },
+          tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
+          series: [${funnelSeries}]
+        };
+        myChart.setOption(option);`;
+    }
+
     default:
       return "";
   }
@@ -341,17 +365,22 @@ const prepChartData = (
     group_field,
     histogram_field,
     null_label,
+    show_missing,
   }
 ) => {
   const applyNullLabel = (v) =>
     (v === null || v === "") && null_label ? null_label : v || "null";
+  const isMissing = (v) => v === null || v === "" || v === undefined;
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
       .filter((v) => v !== null && v !== undefined)
       .map((v) => [v]);
   }
-  if (plot_type === "bar" || plot_type === "pie") {
+  if (plot_type === "bar" || plot_type === "pie" || plot_type === "funnel") {
+    const rows_ = show_missing
+      ? rows
+      : rows.filter((r) => !isMissing(r[factor_field]));
     const stat = (statistic || "count").toLowerCase();
     const aggregateField = (groupRows, field) => {
       if (field === "Row count" || stat === "count") return groupRows.length;
@@ -366,13 +395,13 @@ const prepChartData = (
       return groupRows.length;
     };
     const allCategories = [
-      ...new Set(rows.map((r) => String(applyNullLabel(r[factor_field])))),
+      ...new Set(rows_.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
-    if (plot_type === "pie") {
+    if (plot_type === "pie" || plot_type === "funnel") {
       return allCategories.map((cat) => ({
         name: cat,
         value: aggregateField(
-          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
+          rows_.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           outcome_field
         ),
       }));
@@ -381,7 +410,7 @@ const prepChartData = (
       name: of || "Count",
       values: allCategories.map((cat) =>
         aggregateField(
-          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
+          rows_.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           of
         )
       ),
@@ -439,7 +468,11 @@ const loadRows = async (
   let joinedConfigKey = null;
   if (plot_type === "histogram") {
     qfields.push(histogram_field);
-  } else if (plot_type === "bar" || plot_type === "pie") {
+  } else if (
+    plot_type === "bar" ||
+    plot_type === "pie" ||
+    plot_type === "funnel"
+  ) {
     const factor_field_obj = fields.find((f) => f.name === factor_field);
     if (
       factor_field_obj?.is_fkey &&

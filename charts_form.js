@@ -10,14 +10,11 @@ const buildChartsForm = async (context) => {
   const fields = await table.getFields();
   const fieldOptions = fields.map((f) => f.name);
   const group_fields = fields
-    .filter(
-      (f) => ["Integer", "String"].includes(f.type.name) || f.is_fkey
-    )
+    .filter((f) => ["Integer", "String"].includes(f.type.name) || f.is_fkey)
     .map((f) => f.name);
   const factor_fields = fields
     .filter(
-      (f) =>
-        ["String", "Bool", "Integer"].includes(f.type.name) || f.is_fkey
+      (f) => ["String", "Bool", "Integer"].includes(f.type.name) || f.is_fkey
     )
     .map((f) => f.name);
   const outcome_fields = [
@@ -41,6 +38,7 @@ const buildChartsForm = async (context) => {
             { label: "Bar chart", name: "bar" },
             { label: "Pie chart", name: "pie" },
             { label: "Histogram", name: "histogram" },
+            { label: "Funnel chart", name: "funnel" },
           ],
         },
       },
@@ -134,7 +132,7 @@ const buildChartsForm = async (context) => {
         label: "Outcome field",
         type: "String",
         required: true,
-        showIf: { plot_type: "pie" },
+        showIf: { plot_type: ["pie", "funnel"] },
         attributes: { options: outcome_fields },
       },
       {
@@ -142,7 +140,7 @@ const buildChartsForm = async (context) => {
         label: "Factor field",
         type: "String",
         required: true,
-        showIf: { plot_type: ["bar", "pie"] },
+        showIf: { plot_type: ["bar", "pie", "funnel"] },
         attributes: { options: factor_fields },
       },
       {
@@ -150,7 +148,7 @@ const buildChartsForm = async (context) => {
         label: "Statistic",
         type: "String",
         required: true,
-        showIf: { plot_type: ["bar", "pie"] },
+        showIf: { plot_type: ["bar", "pie", "funnel"] },
         attributes: { options: ["Count", "Avg", "Sum", "Max", "Min"] },
       },
       {
@@ -246,12 +244,18 @@ const buildChartsForm = async (context) => {
         type: "String",
       },
       {
+        name: "show_missing",
+        label: "Show missing values",
+        type: "Bool",
+        showIf: {
+          plot_type: ["bar", "pie", "line", "area", "scatter", "funnel"],
+        },
+      },
+      {
         name: "null_label",
         label: "Label for missing values",
         type: "String",
-        showIf: {
-          plot_type: ["bar", "pie", "line", "area", "scatter"],
-        },
+        showIf: { show_missing: true },
       },
       {
         name: "show_legend",
