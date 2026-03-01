@@ -20,5 +20,5 @@ module.exports = {
     },
   ],
 
-  viewtemplates: [require("./echarts_view")],
+  viewtemplates: [require("./echarts_view"), require("./charts_explorer")],
 };

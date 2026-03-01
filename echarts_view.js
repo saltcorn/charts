@@ -1,304 +1,20 @@
 const Workflow = require("@saltcorn/data/models/workflow");
-const Form = require("@saltcorn/data/models/form");
-const FieldRepeat = require("@saltcorn/data/models/fieldrepeat");
 const Table = require("@saltcorn/data/models/table");
-const { div, script, domReady, code } = require("@saltcorn/markup/tags");
+const { div, script, domReady } = require("@saltcorn/markup/tags");
 const {
   readState,
   stateFieldsToWhere,
 } = require("@saltcorn/data/plugin-helper");
 const { jsexprToWhere } = require("@saltcorn/data/models/expression");
 const { mergeIntoWhere } = require("@saltcorn/data/utils");
-
-const multiAblePlots = ["line", "area", "scatter"];
+const { buildChartsForm, multiAblePlots } = require("./charts_form");
 
 const configuration_workflow = () =>
   new Workflow({
     steps: [
       {
         name: "Chart",
-        form: async (context) => {
-          const table = await Table.findOne({ id: context.table_id });
-          const fields = await table.getFields();
-          const fieldOptions = fields.map((f) => f.name);
-          const group_fields = fields
-            .filter(
-              (f) => ["Integer", "String"].includes(f.type.name) || f.is_fkey
-            )
-            .map((f) => f.name);
-          const factor_fields = fields
-            .filter(
-              (f) =>
-                ["String", "Bool", "Integer"].includes(f.type.name) || f.is_fkey
-            )
-            .map((f) => f.name);
-          const outcome_fields = [
-            "Row count",
-            ...fields
-              .filter((f) =>
-                ["Float", "Integer", "Money"].includes(f.type.name)
-              )
-              .map((f) => f.name),
-          ];
-          return new Form({
-            fields: [
-              {
-                name: "plot_type",
-                label: "Plot type",
-                type: "String",
-                required: true,
-                attributes: {
-                  options: [
-                    { label: "Line chart", name: "line" },
-                    { label: "Area chart", name: "area" },
-                    { label: "Scatter chart", name: "scatter" },
-                    { label: "Bar chart", name: "bar" },
-                    { label: "Pie chart", name: "pie" },
-                    { label: "Histogram", name: "histogram" },
-                  ],
-                },
-              },
-              {
-                name: "plot_series",
-                label: "Plot series",
-                type: "String",
-                required: true,
-                showIf: { plot_type: multiAblePlots },
-                attributes: {
-                  options: [
-                    { label: "Single", name: "single" },
-                    { label: "Multiple", name: "multiple" },
-                    { label: "Group by Field", name: "group_by_field" },
-                  ],
-                },
-              },
-              {
-                name: "x_field",
-                label: "X field",
-                type: "String",
-                required: true,
-                showIf: { plot_type: ["line", "area", "scatter"] },
-                attributes: { options: fieldOptions },
-              },
-              {
-                name: "y_field",
-                label: "Y field",
-                type: "String",
-                required: true,
-                showIf: {
-                  plot_series: ["single", "group_by_field"],
-                  plot_type: ["line", "area", "scatter"],
-                },
-                attributes: { options: fieldOptions },
-              },
-              {
-                name: "histogram_field",
-                label: "Data field",
-                type: "String",
-                required: true,
-                showIf: { plot_type: "histogram" },
-                attributes: { options: fieldOptions },
-              },
-              new FieldRepeat({
-                name: "series",
-                label: "Series",
-                showIf: {
-                  plot_series: "multiple",
-                  plot_type: multiAblePlots,
-                },
-                fields: [
-                  {
-                    name: "y_field",
-                    label: "Y field",
-                    type: "String",
-                    required: true,
-                    attributes: { options: fieldOptions },
-                  },
-                ],
-              }),
-              {
-                name: "group_field",
-                label: "Grouping field",
-                type: "String",
-                required: true,
-                attributes: {
-                  options: group_fields,
-                },
-                showIf: {
-                  plot_series: "group_by_field",
-                  plot_type: multiAblePlots,
-                },
-              },
-              new FieldRepeat({
-                name: "outcomes",
-                label: "Outcomes",
-                showIf: { plot_type: "bar" },
-                fields: [
-                  {
-                    name: "outcome_field",
-                    label: "Outcome field",
-                    type: "String",
-                    required: true,
-                    attributes: { options: outcome_fields },
-                  },
-                ],
-              }),
-              {
-                name: "outcome_field",
-                label: "Outcome field",
-                type: "String",
-                required: true,
-                showIf: { plot_type: "pie" },
-                attributes: { options: outcome_fields },
-              },
-              {
-                name: "factor_field",
-                label: "Factor field",
-                type: "String",
-                required: true,
-                showIf: { plot_type: ["bar", "pie"] },
-                attributes: { options: factor_fields },
-              },
-              {
-                name: "statistic",
-                label: "Statistic",
-                type: "String",
-                required: true,
-                showIf: { plot_type: ["bar", "pie"] },
-                attributes: { options: ["Count", "Avg", "Sum", "Max", "Min"] },
-              },
-              {
-                name: "bar_stack",
-                label: "Stack series",
-                type: "Bool",
-                showIf: { plot_type: "bar" },
-              },
-              {
-                name: "bar_orientation",
-                label: "Orientation",
-                type: "String",
-                showIf: { plot_type: "bar" },
-                attributes: {
-                  options: [
-                    { label: "Vertical", name: "vertical" },
-                    { label: "Horizontal", name: "horizontal" },
-                  ],
-                },
-              },
-              {
-                name: "bar_axis_title",
-                label: "Value axis title",
-                type: "String",
-                showIf: { plot_type: "bar" },
-              },
-              {
-                name: "lower_limit",
-                label: "Lower value limit",
-                type: "Float",
-                showIf: { plot_type: "bar" },
-              },
-              {
-                name: "upper_limit",
-                label: "Upper value limit",
-                type: "Float",
-                showIf: { plot_type: "bar" },
-              },
-              {
-                name: "smooth",
-                label: "Smooth line",
-                type: "Bool",
-                showIf: { plot_type: ["line", "area"] },
-              },
-              {
-                name: "pie_donut",
-                label: "Donut",
-                type: "Bool",
-                showIf: { plot_type: "pie" },
-              },
-              {
-                name: "donut_ring_width",
-                label: "Ring width (%)",
-                type: "Integer",
-                showIf: { plot_type: "pie", pie_donut: true },
-                default: 50,
-              },
-              {
-                name: "pie_label_position",
-                label: "Label position",
-                type: "String",
-                showIf: { plot_type: "pie" },
-                attributes: {
-                  options: [
-                    { label: "Inside", name: "inside" },
-                    { label: "Outside", name: "outside" },
-                    { label: "Legend", name: "legend" },
-                  ],
-                },
-              },
-              {
-                name: "title",
-                label: "Plot title",
-                type: "String",
-              },
-              {
-                name: "include_fml",
-                label: "Row inclusion formula",
-                class: "validate-expression",
-                sublabel:
-                  "Only include rows where this formula is true. " +
-                  "In scope: " +
-                  [
-                    ...fields.map((f) => f.name),
-                    "user",
-                    "year",
-                    "month",
-                    "day",
-                    "today()",
-                  ]
-                    .map((s) => code(s))
-                    .join(", "),
-                type: "String",
-              },
-              {
-                name: "null_label",
-                label: "Label for missing values",
-                type: "String",
-                showIf: {
-                  plot_type: ["bar", "pie", "line", "area", "scatter"],
-                },
-              },
-              {
-                name: "show_legend",
-                label: "Show legend",
-                type: "Bool",
-                showIf: { plot_type: ["line", "area", "scatter", "bar"] },
-              },
-              { input_type: "section_header", label: "Margins" },
-              {
-                name: "mleft",
-                label: "Left (px)",
-                type: "Integer",
-                attributes: { asideNext: true },
-              },
-              {
-                name: "mright",
-                label: "Right (px)",
-                type: "Integer",
-              },
-              {
-                name: "mtop",
-                label: "Top (px)",
-                type: "Integer",
-                attributes: { asideNext: true },
-              },
-              {
-                name: "mbottom",
-                label: "Bottom (px)",
-                type: "Integer",
-              },
-            ],
-          });
-        },
+        form: buildChartsForm,
       },
     ],
   });
@@ -605,6 +321,30 @@ const buildChartScript = (
         myChart.setOption(option);`;
     }
 
+    case "funnel": {
+      const legendBottom = mbottom ?? 0;
+      const funnelSeries = JSON.stringify({
+        name: "Funnel",
+        type: "funnel",
+        sort: "descending",
+        gap: 2,
+        ...(mleft != null && { left: mleft }),
+        ...(mright != null && { right: mright }),
+        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
+        bottom: legendBottom + legendHeight,
+        label: { show: true, position: "inside", formatter: "{d}%" },
+        data,
+      });
+      return `
+        var option = {
+          ${titleOption}
+          legend: { bottom: ${legendBottom} },
+          tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
+          series: [${funnelSeries}]
+        };
+        myChart.setOption(option);`;
+    }
+
     default:
       return "";
   }
@@ -625,17 +365,22 @@ const prepChartData = (
     group_field,
     histogram_field,
     null_label,
+    show_missing,
   }
 ) => {
   const applyNullLabel = (v) =>
     (v === null || v === "") && null_label ? null_label : v || "null";
+  const isMissing = (v) => v === null || v === "" || v === undefined;
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
       .filter((v) => v !== null && v !== undefined)
       .map((v) => [v]);
   }
-  if (plot_type === "bar" || plot_type === "pie") {
+  if (plot_type === "bar" || plot_type === "pie" || plot_type === "funnel") {
+    const rows_ = show_missing
+      ? rows
+      : rows.filter((r) => !isMissing(r[factor_field]));
     const stat = (statistic || "count").toLowerCase();
     const aggregateField = (groupRows, field) => {
       if (field === "Row count" || stat === "count") return groupRows.length;
@@ -650,13 +395,13 @@ const prepChartData = (
       return groupRows.length;
     };
     const allCategories = [
-      ...new Set(rows.map((r) => String(applyNullLabel(r[factor_field])))),
+      ...new Set(rows_.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
-    if (plot_type === "pie") {
+    if (plot_type === "pie" || plot_type === "funnel") {
       return allCategories.map((cat) => ({
         name: cat,
         value: aggregateField(
-          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
+          rows_.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           outcome_field
         ),
       }));
@@ -665,7 +410,7 @@ const prepChartData = (
       name: of || "Count",
       values: allCategories.map((cat) =>
         aggregateField(
-          rows.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
+          rows_.filter((r) => String(applyNullLabel(r[factor_field])) === cat),
           of
         )
       ),
@@ -723,7 +468,11 @@ const loadRows = async (
   let joinedConfigKey = null;
   if (plot_type === "histogram") {
     qfields.push(histogram_field);
-  } else if (plot_type === "bar" || plot_type === "pie") {
+  } else if (
+    plot_type === "bar" ||
+    plot_type === "pie" ||
+    plot_type === "funnel"
+  ) {
     const factor_field_obj = fields.find((f) => f.name === factor_field);
     if (
       factor_field_obj?.is_fkey &&
