@@ -45,6 +45,10 @@ const buildChartScript = (
     mright,
     mtop,
     mbottom,
+    gauge_type,
+    gauge_style,
+    gauge_min,
+    gauge_max,
   }
 ) => {
   const titleHeight = 30;
@@ -345,6 +349,90 @@ const buildChartScript = (
         myChart.setOption(option);`;
     }
 
+    case "gauge": {
+      const gaugeMin = gauge_min ?? 0;
+      const gaugeMax = (() => {
+        if (gauge_max != null) return gauge_max;
+        const m = Math.max(...data.map((d) => d.value));
+        if (!isFinite(m) || m <= 100) return 100;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(m)));
+        return Math.ceil((m * 1.05) / magnitude) * magnitude;
+      })();
+      if (gauge_style !== "pointer") {
+        return `
+          var option = {
+            ${titleOption}
+            series: [{
+              type: 'gauge',
+              min: ${gaugeMin},
+              max: ${gaugeMax},
+              startAngle: 90,
+              endAngle: -270,
+              pointer: { show: false },
+              progress: {
+                show: true,
+                overlap: false,
+                roundCap: true,
+                clip: false,
+                itemStyle: { borderWidth: 1, borderColor: '#464646' }
+              },
+              axisLine: { lineStyle: { width: 40 } },
+              splitLine: { show: false, distance: 0, length: 10 },
+              axisTick: { show: false },
+              axisLabel: { show: false, distance: 50 },
+              data: ${JSON.stringify(data)},
+              title: { fontSize: 14 },
+              detail: {
+                width: 50,
+                height: 14,
+                fontSize: 14,
+                color: 'inherit',
+                borderColor: 'inherit',
+                borderRadius: 20,
+                borderWidth: 1,
+                formatter: '{value}'
+              }
+            }]
+          };
+          myChart.setOption(option);`;
+      }
+      return `
+        var option = {
+          ${titleOption}
+          series: [{
+            type: 'gauge',
+            min: ${gaugeMin},
+            max: ${gaugeMax},
+            anchor: {
+              show: true,
+              showAbove: true,
+              size: 18,
+              itemStyle: { color: '#FAC858' }
+            },
+            pointer: {
+              icon: 'path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v115c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z',
+              width: 8,
+              length: '80%',
+              offsetCenter: [0, '8%']
+            },
+            progress: { show: true, overlap: true, roundCap: true },
+            axisLine: { roundCap: true },
+            data: ${JSON.stringify(data)},
+            title: { fontSize: 14 },
+            detail: {
+              width: 40,
+              height: 14,
+              fontSize: 14,
+              color: '#fff',
+              backgroundColor: 'inherit',
+              borderRadius: 3,
+              formatter: '{value}'
+            }
+          }]
+        };
+        myChart.setOption(option);`;
+    }
+
     default:
       return "";
   }
@@ -366,6 +454,11 @@ const prepChartData = (
     histogram_field,
     null_label,
     show_missing,
+    gauge_name,
+    gauge_type,
+    gauge_style,
+    gauge_series,
+    gauge_group_field,
   }
 ) => {
   const applyNullLabel = (v) =>
@@ -377,10 +470,16 @@ const prepChartData = (
       .filter((v) => v !== null && v !== undefined)
       .map((v) => [v]);
   }
-  if (plot_type === "bar" || plot_type === "pie" || plot_type === "funnel") {
-    const rows_ = show_missing
-      ? rows
-      : rows.filter((r) => !isMissing(r[factor_field]));
+  if (
+    plot_type === "bar" ||
+    plot_type === "pie" ||
+    plot_type === "funnel" ||
+    plot_type === "gauge"
+  ) {
+    const rows_ =
+      plot_type === "gauge" || show_missing
+        ? rows
+        : rows.filter((r) => !isMissing(r[factor_field]));
     const stat = (statistic || "count").toLowerCase();
     const aggregateField = (groupRows, field) => {
       if (field === "Row count" || stat === "count") return groupRows.length;
@@ -397,6 +496,61 @@ const prepChartData = (
     const allCategories = [
       ...new Set(rows_.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
+    if (plot_type === "gauge") {
+      const calcOffsets = (items, getEntry) => {
+        const n = items.length;
+        if (gauge_style === "pointer") {
+          const hSpacing = n > 1 ? 80 / (n - 1) : 0;
+          const startX = n > 1 ? -40 : 0;
+          return items.map((item, i) => ({
+            ...getEntry(item),
+            title: { offsetCenter: [`${startX + i * hSpacing}%`, "80%"] },
+            detail: {
+              valueAnimation: true,
+              offsetCenter: [`${startX + i * hSpacing}%`, "95%"],
+            },
+          }));
+        }
+        const spacing = 36;
+        const startY = -((n - 1) * spacing) / 2;
+        return items.map((item, i) => {
+          const titleY = startY + i * spacing;
+          return {
+            ...getEntry(item),
+            title: { offsetCenter: ["0%", `${titleY}%`] },
+            detail: {
+              valueAnimation: true,
+              offsetCenter: ["0%", `${titleY + 15}%`],
+            },
+          };
+        });
+      };
+      if (gauge_type === "group_by_field" && gauge_group_field) {
+        const groups = [...new Set(rows_.map((r) => r[gauge_group_field]))];
+        return calcOffsets(groups, (val) => ({
+          value: aggregateField(
+            rows_.filter((r) => r[gauge_group_field] === val),
+            outcome_field
+          ),
+          name: val === null ? "null" : String(val),
+        }));
+      }
+      if (gauge_type === "multiple" && gauge_series?.length) {
+        return calcOffsets(
+          gauge_series,
+          ({ outcome_field: of, gauge_name: gn }) => ({
+            value: aggregateField(rows_, of),
+            name: gn || of || "Value",
+          })
+        );
+      }
+      return [
+        {
+          value: aggregateField(rows_, outcome_field),
+          name: gauge_name || outcome_field || "Value",
+        },
+      ];
+    }
     if (plot_type === "pie" || plot_type === "funnel") {
       return allCategories.map((cat) => ({
         name: cat,
@@ -449,6 +603,9 @@ const loadRows = async (
     group_field,
     histogram_field,
     include_fml,
+    gauge_type,
+    gauge_series,
+    gauge_group_field,
   },
   state,
   req
@@ -468,6 +625,18 @@ const loadRows = async (
   let joinedConfigKey = null;
   if (plot_type === "histogram") {
     qfields.push(histogram_field);
+  } else if (plot_type === "gauge") {
+    if (gauge_type === "multiple") {
+      for (const { outcome_field: of } of gauge_series || []) {
+        if (of && of !== "Row count") qfields.push(of);
+      }
+    } else if (gauge_type === "group_by_field") {
+      if (gauge_group_field) qfields.push(gauge_group_field);
+      if (outcome_field && outcome_field !== "Row count")
+        qfields.push(outcome_field);
+    } else if (outcome_field && outcome_field !== "Row count") {
+      qfields.push(outcome_field);
+    }
   } else if (
     plot_type === "bar" ||
     plot_type === "pie" ||
