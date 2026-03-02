@@ -700,11 +700,45 @@ const loadRows = async (
 
   const gfield = fields.find((f) => f.name === group_field);
   let joinedConfigKey = null;
+  let hmFieldMap = null;
   if (plot_type === "heatmap") {
-    if (heatmap_x_field) qfields.push(heatmap_x_field);
-    if (heatmap_y_field) qfields.push(heatmap_y_field);
+    const xFieldObj = fields.find((f) => f.name === heatmap_x_field);
+    const yFieldObj = fields.find((f) => f.name === heatmap_y_field);
+    let effectiveXField = heatmap_x_field;
+    let effectiveYField = heatmap_y_field;
+    if (xFieldObj?.is_fkey && xFieldObj.attributes.summary_field) {
+      joinFields.__hm_x = {
+        ref: heatmap_x_field,
+        target: xFieldObj.attributes.summary_field,
+      };
+      effectiveXField = "__hm_x";
+    } else if (heatmap_x_field) {
+      qfields.push(heatmap_x_field);
+    }
+    if (yFieldObj?.is_fkey && yFieldObj.attributes.summary_field) {
+      joinFields.__hm_y = {
+        ref: heatmap_y_field,
+        target: yFieldObj.attributes.summary_field,
+      };
+      effectiveYField = "__hm_y";
+    } else if (heatmap_y_field) {
+      qfields.push(heatmap_y_field);
+    }
     if (heatmap_value_field && heatmap_value_field !== "Row count")
       qfields.push(heatmap_value_field);
+    if (
+      effectiveXField !== heatmap_x_field ||
+      effectiveYField !== heatmap_y_field
+    ) {
+      hmFieldMap = {
+        ...(effectiveXField !== heatmap_x_field && {
+          heatmap_x_field: effectiveXField,
+        }),
+        ...(effectiveYField !== heatmap_y_field && {
+          heatmap_y_field: effectiveYField,
+        }),
+      };
+    }
   } else if (plot_type === "histogram") {
     qfields.push(histogram_field);
   } else if (plot_type === "gauge") {
@@ -776,11 +810,11 @@ const loadRows = async (
     fields: qfields,
     ...(orderBy && { orderBy }),
   });
-  return { rows, joinedConfigKey };
+  return { rows, joinedConfigKey, hmFieldMap };
 };
 
 const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
-  const { rows, joinedConfigKey } = await loadRows(
+  const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
     table_id,
     config,
     state,
@@ -788,6 +822,8 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
   );
   const effectiveConfig = joinedConfigKey
     ? { ...config, [joinedConfigKey]: "__groupjoin" }
+    : hmFieldMap
+    ? { ...config, ...hmFieldMap }
     : config;
   const data = prepChartData(rows, effectiveConfig);
   const chartScript = buildChartScript(data, config);
