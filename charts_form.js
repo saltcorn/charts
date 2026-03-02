@@ -40,6 +40,7 @@ const buildChartsForm = async (context) => {
             { label: "Histogram", name: "histogram" },
             { label: "Funnel chart", name: "funnel" },
             { label: "Gauge chart", name: "gauge" },
+            { label: "Heatmap", name: "heatmap" },
           ],
         },
       },
@@ -83,6 +84,60 @@ const buildChartsForm = async (context) => {
         required: true,
         showIf: { plot_type: "histogram" },
         attributes: { options: fieldOptions },
+      },
+      {
+        name: "heatmap_x_field",
+        label: "X axis field",
+        type: "String",
+        required: true,
+        showIf: { plot_type: "heatmap" },
+        attributes: { options: factor_fields },
+      },
+      {
+        name: "heatmap_y_field",
+        label: "Y axis field",
+        type: "String",
+        required: true,
+        showIf: { plot_type: "heatmap" },
+        attributes: { options: factor_fields },
+      },
+      {
+        name: "heatmap_value_field",
+        label: "Value field",
+        type: "String",
+        required: true,
+        showIf: { plot_type: "heatmap" },
+        attributes: { options: outcome_fields },
+      },
+      {
+        name: "heatmap_min",
+        label: "Color scale min",
+        type: "Float",
+        sublabel: "Leave empty for 0",
+        showIf: { plot_type: "heatmap" },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "heatmap_max",
+        label: "Color scale max",
+        type: "Float",
+        sublabel: "Leave empty for automatic",
+        showIf: { plot_type: "heatmap" },
+      },
+      {
+        name: "heatmap_color_scale",
+        label: "Color scale type",
+        type: "String",
+        sublabel:
+          "Gradient: smooth continuous color transition between min and max. " +
+          "Steps: discrete color bands, each covering an equal value interval.",
+        showIf: { plot_type: "heatmap" },
+        attributes: {
+          options: [
+            { label: "Gradient", name: "gradient" },
+            { label: "Steps", name: "steps" },
+          ],
+        },
       },
       new FieldRepeat({
         name: "series",

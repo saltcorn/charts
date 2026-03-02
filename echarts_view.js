@@ -49,6 +49,9 @@ const buildChartScript = (
     gauge_style,
     gauge_min,
     gauge_max,
+    heatmap_min,
+    heatmap_max,
+    heatmap_color_scale,
   }
 ) => {
   const titleHeight = 30;
@@ -349,6 +352,56 @@ const buildChartScript = (
         myChart.setOption(option);`;
     }
 
+    case "heatmap": {
+      const { xCategories, yCategories, cells } = data;
+      const hmMax =
+        heatmap_max != null
+          ? heatmap_max
+          : cells.length
+          ? Math.max(...cells.filter((c) => c[2] !== "-").map((c) => c[2]))
+          : 10;
+      const hmMin = heatmap_min ?? 0;
+      const vmHeight = 60;
+      const vmBottom = mbottom ?? 0;
+      const hmGridObj = {
+        ...(mleft != null && { left: mleft }),
+        ...(mright != null && { right: mright }),
+        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
+        ...(mbottom != null && { bottom: mbottom + vmHeight }),
+      };
+      return `
+        var option = {
+          ${titleOption}
+          tooltip: { position: 'top' },
+          grid: ${JSON.stringify(hmGridObj)},
+          xAxis: { type: 'category', data: ${JSON.stringify(
+            xCategories
+          )}, splitArea: { show: true } },
+          yAxis: { type: 'category', data: ${JSON.stringify(
+            yCategories
+          )}, splitArea: { show: true } },
+          visualMap: {
+            ${heatmap_color_scale === "steps" ? "type: 'piecewise'," : ""}
+            min: ${hmMin},
+            max: ${hmMax},
+            calculable: true,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: '${vmBottom}px',
+            outOfRange: { color: ['#333'] }
+          },
+          series: [{
+            type: 'heatmap',
+            data: ${JSON.stringify(cells)},
+            label: { show: true },
+            emphasis: {
+              itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+            }
+          }]
+        };
+        myChart.setOption(option);`;
+    }
+
     case "gauge": {
       const gaugeMin = gauge_min ?? 0;
       const gaugeMax = (() => {
@@ -459,11 +512,32 @@ const prepChartData = (
     gauge_style,
     gauge_series,
     gauge_group_field,
+    heatmap_x_field,
+    heatmap_y_field,
+    heatmap_value_field,
   }
 ) => {
   const applyNullLabel = (v) =>
     (v === null || v === "") && null_label ? null_label : v || "null";
   const isMissing = (v) => v === null || v === "" || v === undefined;
+  if (plot_type === "heatmap") {
+    const xCategories = [
+      ...new Set(rows.map((r) => String(r[heatmap_x_field] ?? "null"))),
+    ];
+    const yCategories = [
+      ...new Set(rows.map((r) => String(r[heatmap_y_field] ?? "null"))),
+    ];
+    const xIndex = new Map(xCategories.map((x, i) => [x, i]));
+    const yIndex = new Map(yCategories.map((y, i) => [y, i]));
+    const cells = rows
+      .filter((r) => r[heatmap_value_field] != null)
+      .map((r) => [
+        xIndex.get(String(r[heatmap_x_field] ?? "null")),
+        yIndex.get(String(r[heatmap_y_field] ?? "null")),
+        r[heatmap_value_field] || "-",
+      ]);
+    return { xCategories, yCategories, cells };
+  }
   if (plot_type === "histogram") {
     return rows
       .map((r) => r[histogram_field])
@@ -606,6 +680,9 @@ const loadRows = async (
     gauge_type,
     gauge_series,
     gauge_group_field,
+    heatmap_x_field,
+    heatmap_y_field,
+    heatmap_value_field,
   },
   state,
   req
@@ -623,7 +700,12 @@ const loadRows = async (
 
   const gfield = fields.find((f) => f.name === group_field);
   let joinedConfigKey = null;
-  if (plot_type === "histogram") {
+  if (plot_type === "heatmap") {
+    if (heatmap_x_field) qfields.push(heatmap_x_field);
+    if (heatmap_y_field) qfields.push(heatmap_y_field);
+    if (heatmap_value_field && heatmap_value_field !== "Row count")
+      qfields.push(heatmap_value_field);
+  } else if (plot_type === "histogram") {
     qfields.push(histogram_field);
   } else if (plot_type === "gauge") {
     if (gauge_type === "multiple") {
