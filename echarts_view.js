@@ -8,6 +8,7 @@ const {
 const { jsexprToWhere } = require("@saltcorn/data/models/expression");
 const { mergeIntoWhere } = require("@saltcorn/data/utils");
 const { buildChartsForm, multiAblePlots } = require("./charts_form");
+const { getState } = require("@saltcorn/data/db/state");
 
 const configuration_workflow = () =>
   new Workflow({
@@ -491,6 +492,38 @@ const buildChartScript = (
   }
 };
 
+// Assigns positions to the gauge data labels
+// Arc style: stack them vertically, centered, with fixed spacing
+// Pointer style: spreads them horizontally at the bottom of the gauge
+const positionGaugeItems = (items, getEntry, gauge_style) => {
+  const n = items.length;
+  if (gauge_style === "pointer") {
+    const hSpacing = n > 1 ? 80 / (n - 1) : 0;
+    const startX = n > 1 ? -40 : 0;
+    return items.map((item, i) => ({
+      ...getEntry(item),
+      title: { offsetCenter: [`${startX + i * hSpacing}%`, "80%"] },
+      detail: {
+        valueAnimation: true,
+        offsetCenter: [`${startX + i * hSpacing}%`, "95%"],
+      },
+    }));
+  }
+  const spacing = 36;
+  const startY = -((n - 1) * spacing) / 2;
+  return items.map((item, i) => {
+    const titleY = startY + i * spacing;
+    return {
+      ...getEntry(item),
+      title: { offsetCenter: ["0%", `${titleY}%`] },
+      detail: {
+        valueAnimation: true,
+        offsetCenter: ["0%", `${titleY + 15}%`],
+      },
+    };
+  });
+};
+
 const prepChartData = (
   rows,
   {
@@ -571,51 +604,28 @@ const prepChartData = (
       ...new Set(rows_.map((r) => String(applyNullLabel(r[factor_field])))),
     ];
     if (plot_type === "gauge") {
-      const calcOffsets = (items, getEntry) => {
-        const n = items.length;
-        if (gauge_style === "pointer") {
-          const hSpacing = n > 1 ? 80 / (n - 1) : 0;
-          const startX = n > 1 ? -40 : 0;
-          return items.map((item, i) => ({
-            ...getEntry(item),
-            title: { offsetCenter: [`${startX + i * hSpacing}%`, "80%"] },
-            detail: {
-              valueAnimation: true,
-              offsetCenter: [`${startX + i * hSpacing}%`, "95%"],
-            },
-          }));
-        }
-        const spacing = 36;
-        const startY = -((n - 1) * spacing) / 2;
-        return items.map((item, i) => {
-          const titleY = startY + i * spacing;
-          return {
-            ...getEntry(item),
-            title: { offsetCenter: ["0%", `${titleY}%`] },
-            detail: {
-              valueAnimation: true,
-              offsetCenter: ["0%", `${titleY + 15}%`],
-            },
-          };
-        });
-      };
       if (gauge_type === "group_by_field" && gauge_group_field) {
         const groups = [...new Set(rows_.map((r) => r[gauge_group_field]))];
-        return calcOffsets(groups, (val) => ({
-          value: aggregateField(
-            rows_.filter((r) => r[gauge_group_field] === val),
-            outcome_field
-          ),
-          name: val === null ? "null" : String(val),
-        }));
+        return positionGaugeItems(
+          groups,
+          (val) => ({
+            value: aggregateField(
+              rows_.filter((r) => r[gauge_group_field] === val),
+              outcome_field
+            ),
+            name: val === null ? "null" : String(val),
+          }),
+          gauge_style
+        );
       }
       if (gauge_type === "multiple" && gauge_series?.length) {
-        return calcOffsets(
+        return positionGaugeItems(
           gauge_series,
           ({ outcome_field: of, gauge_name: gn }) => ({
             value: aggregateField(rows_, of),
             name: gn || of || "Value",
-          })
+          }),
+          gauge_style
         );
       }
       return [
@@ -663,8 +673,132 @@ const prepChartData = (
   return rows.map((r) => [r[x_field], r[y_field]]);
 };
 
+const aggTypes = ["bar", "pie", "funnel", "gauge"];
+
+const loadAggregated = async (
+  table,
+  fields,
+  where,
+  {
+    plot_type,
+    statistic,
+    null_label,
+    show_missing,
+    factor_field,
+    outcome_field,
+    outcomes,
+    gauge_type,
+    gauge_group_field,
+    gauge_series,
+    gauge_style,
+    gauge_name,
+  }
+) => {
+  const stat = (statistic || "count").toLowerCase();
+  const isCount = (of_) => !of_ || of_ === "Row count" || stat === "count";
+  const aggFor = (of_) =>
+    isCount(of_) ? { aggregate: "count" } : { field: of_, aggregate: stat };
+
+  if (plot_type === "gauge") {
+    if (gauge_type === "group_by_field" && gauge_group_field) {
+      const aggRows = await table.aggregationQuery(
+        { __val: aggFor(outcome_field) },
+        { where, groupBy: [gauge_group_field] }
+      );
+      const items = aggRows.map((r) => ({
+        value: r.__val,
+        name:
+          r[gauge_group_field] === null ? "null" : String(r[gauge_group_field]),
+      }));
+      return positionGaugeItems(items, (item) => item, gauge_style);
+    }
+    if (gauge_type === "multiple" && gauge_series?.length) {
+      const aggregations = {};
+      for (const { outcome_field: of_ } of gauge_series) {
+        aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
+      }
+      const result = await table.aggregationQuery(aggregations, { where });
+      const items = gauge_series.map(
+        ({ outcome_field: of_, gauge_name: gn }) => ({
+          value: isCount(of_) ? result.__count : result[of_],
+          name: gn || of_ || "Value",
+        })
+      );
+      return positionGaugeItems(items, (item) => item, gauge_style);
+    }
+    const result = await table.aggregationQuery(
+      { __val: aggFor(outcome_field) },
+      { where }
+    );
+    const items = [
+      { value: result.__val, name: gauge_name || outcome_field || "Value" },
+    ];
+    return positionGaugeItems(items, (item) => item, gauge_style);
+  }
+
+  // bar / pie / funnel
+  if (!factor_field)
+    return plot_type === "bar" ? { categories: [], series: [] } : [];
+  const applyNL = (v) =>
+    (v === null || v === "") && null_label ? null_label : v ?? "null";
+  const isMiss = (v) => v === null || v === "" || v === undefined;
+  const factor_field_obj = fields.find((f) => f.name === factor_field);
+  const factorIsFK = !!(
+    factor_field_obj?.is_fkey && factor_field_obj.attributes.summary_field
+  );
+  const allOutcomeFields =
+    plot_type === "bar"
+      ? (outcomes || []).map((o) => o.outcome_field)
+      : [outcome_field];
+  const aggregations = {};
+  for (const of_ of allOutcomeFields) {
+    aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
+  }
+  const aggRows = await table.aggregationQuery(aggregations, {
+    where,
+    groupBy: [factor_field],
+  });
+  let labelMap = null;
+  if (factorIsFK) {
+    const refTable = await Table.findOne({
+      name: factor_field_obj.reftable_name,
+    });
+    const summaryField = factor_field_obj.attributes.summary_field;
+    const labelRows = refTable ? await refTable.getRows({}) : [];
+    labelMap = new Map(labelRows.map((r) => [r.id, r[summaryField]]));
+  }
+  const getLabel = (fkId) => {
+    if (labelMap) {
+      if (isMiss(fkId)) return String(applyNL(null));
+      const label = labelMap.get(fkId);
+      return label != null ? String(label) : String(fkId);
+    }
+    return String(applyNL(fkId));
+  };
+  const filtered = show_missing
+    ? aggRows
+    : aggRows.filter((r) => !isMiss(r[factor_field]));
+  const getVal = (r, of_) => (isCount(of_) ? r.__count : r[of_]);
+  if (plot_type === "pie" || plot_type === "funnel") {
+    return filtered.map((r) => ({
+      name: getLabel(r[factor_field]),
+      value: getVal(r, outcome_field),
+    }));
+  }
+  const categories = filtered.map((r) => getLabel(r[factor_field]));
+  return {
+    categories,
+    series: (outcomes || []).map(({ outcome_field: of_ }) => ({
+      name: of_ || "Count",
+      values: filtered.map((r) => getVal(r, of_)),
+    })),
+  };
+};
+
 const loadRows = async (
-  table_id,
+  table,
+  fields,
+  where,
   {
     plot_type,
     plot_series,
@@ -676,25 +810,14 @@ const loadRows = async (
     outcomes,
     group_field,
     histogram_field,
-    include_fml,
     gauge_type,
     gauge_series,
     gauge_group_field,
     heatmap_x_field,
     heatmap_y_field,
     heatmap_value_field,
-  },
-  state,
-  req
-) => {
-  const table = await Table.findOne({ id: table_id });
-  const fields = await table.getFields();
-  readState(state, fields);
-  const where = await stateFieldsToWhere({ fields, state });
-  if (include_fml) {
-    const ctx = { ...state, user_id: req?.user?.id || null, user: req?.user };
-    mergeIntoWhere(where, jsexprToWhere(include_fml, ctx, fields) || {});
   }
+) => {
   const joinFields = {};
   const qfields = [];
 
@@ -704,9 +827,11 @@ const loadRows = async (
   if (plot_type === "heatmap") {
     const xFieldObj = fields.find((f) => f.name === heatmap_x_field);
     const yFieldObj = fields.find((f) => f.name === heatmap_y_field);
+    const xIsFK = !!(xFieldObj?.is_fkey && xFieldObj.attributes.summary_field);
+    const yIsFK = !!(yFieldObj?.is_fkey && yFieldObj.attributes.summary_field);
     let effectiveXField = heatmap_x_field;
     let effectiveYField = heatmap_y_field;
-    if (xFieldObj?.is_fkey && xFieldObj.attributes.summary_field) {
+    if (xIsFK) {
       joinFields.__hm_x = {
         ref: heatmap_x_field,
         target: xFieldObj.attributes.summary_field,
@@ -715,7 +840,7 @@ const loadRows = async (
     } else if (heatmap_x_field) {
       qfields.push(heatmap_x_field);
     }
-    if (yFieldObj?.is_fkey && yFieldObj.attributes.summary_field) {
+    if (yIsFK) {
       joinFields.__hm_y = {
         ref: heatmap_y_field,
         target: yFieldObj.attributes.summary_field,
@@ -759,10 +884,10 @@ const loadRows = async (
     plot_type === "funnel"
   ) {
     const factor_field_obj = fields.find((f) => f.name === factor_field);
-    if (
-      factor_field_obj?.is_fkey &&
-      factor_field_obj.attributes.summary_field
-    ) {
+    const factorIsFK = !!(
+      factor_field_obj?.is_fkey && factor_field_obj.attributes.summary_field
+    );
+    if (factorIsFK) {
       joinedConfigKey = "factor_field";
       joinFields.__groupjoin = {
         ref: factor_field,
@@ -814,18 +939,42 @@ const loadRows = async (
 };
 
 const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
-  const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
-    table_id,
-    config,
-    state,
-    req
+  const table = await Table.findOne({ id: table_id });
+  const fields = await table.getFields();
+  readState(state, fields);
+  const where = await stateFieldsToWhere({ fields, state });
+  if (config.include_fml) {
+    const ctx = { ...state, user_id: req?.user?.id || null, user: req?.user };
+    mergeIntoWhere(where, jsexprToWhere(config.include_fml, ctx, fields) || {});
+  }
+
+  const useAgg =
+    typeof table.aggregationQuery === "function" &&
+    aggTypes.includes(config.plot_type);
+  getState().log(
+    6,
+    `charts: table=${table.name} plot_type=${config.plot_type} query_type=${
+      useAgg ? "aggregationQuery" : "loadRows"
+    }`
   );
-  const effectiveConfig = joinedConfigKey
-    ? { ...config, [joinedConfigKey]: "__groupjoin" }
-    : hmFieldMap
-    ? { ...config, ...hmFieldMap }
-    : config;
-  const data = prepChartData(rows, effectiveConfig);
+  let data;
+  if (useAgg) {
+    data = await loadAggregated(table, fields, where, config);
+  } else {
+    const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
+      table,
+      fields,
+      where,
+      config
+    );
+    const effectiveConfig = joinedConfigKey
+      ? { ...config, [joinedConfigKey]: "__groupjoin" }
+      : hmFieldMap
+      ? { ...config, ...hmFieldMap }
+      : config;
+    data = prepChartData(rows, effectiveConfig);
+  }
+
   const chartScript = buildChartScript(data, config);
   if (!chartScript) return "";
 
