@@ -179,6 +179,8 @@ const buildChartsForm = async (context) => {
             label: "Outcome field",
             type: "String",
             required: true,
+            sublabel:
+              "The numeric value to aggregate (e.g. revenue, score). Use 'Row count' to count rows.",
             attributes: { options: outcome_fields },
           },
         ],
@@ -188,6 +190,8 @@ const buildChartsForm = async (context) => {
         label: "Outcome field",
         type: "String",
         required: true,
+        sublabel:
+          "The numeric value to aggregate (e.g. revenue, score). Use 'Row count' to count rows.",
         showIf: { plot_type: ["pie", "funnel", "gauge"] },
         attributes: { options: outcome_fields },
       },
@@ -196,6 +200,8 @@ const buildChartsForm = async (context) => {
         label: "Factor field",
         type: "String",
         required: true,
+        sublabel:
+          "The categorical field whose distinct values define the slices, bars, or funnel stages.",
         showIf: { plot_type: ["bar", "pie", "funnel"] },
         attributes: { options: factor_fields },
       },
