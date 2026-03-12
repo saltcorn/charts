@@ -8,6 +8,7 @@ const {
 const { jsexprToWhere } = require("@saltcorn/data/models/expression");
 const { mergeIntoWhere } = require("@saltcorn/data/utils");
 const { buildChartsForm, multiAblePlots } = require("./charts_form");
+const { getState } = require("@saltcorn/data/db/state");
 
 const configuration_workflow = () =>
   new Workflow({
@@ -736,6 +737,8 @@ const loadAggregated = async (
   }
 
   // bar / pie / funnel
+  if (!factor_field)
+    return plot_type === "bar" ? { categories: [], series: [] } : [];
   const applyNL = (v) =>
     (v === null || v === "") && null_label ? null_label : v ?? "null";
   const isMiss = (v) => v === null || v === "" || v === undefined;
@@ -945,11 +948,17 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     mergeIntoWhere(where, jsexprToWhere(config.include_fml, ctx, fields) || {});
   }
 
-  let data;
-  if (
+  const useAgg =
     typeof table.aggregationQuery === "function" &&
-    aggTypes.includes(config.plot_type)
-  ) {
+    aggTypes.includes(config.plot_type);
+  getState().log(
+    6,
+    `charts: table=${table.name} plot_type=${config.plot_type} query_type=${
+      useAgg ? "aggregationQuery" : "loadRows"
+    }`
+  );
+  let data;
+  if (useAgg) {
     data = await loadAggregated(table, fields, where, config);
   } else {
     const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
