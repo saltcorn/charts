@@ -46,15 +46,35 @@ const buildChartScript = (
     mright,
     mtop,
     mbottom,
-    gauge_type,
     gauge_style,
     gauge_min,
     gauge_max,
     heatmap_min,
     heatmap_max,
     heatmap_color_scale,
+    factor_field,
+    selected,
   }
 ) => {
+  // Builds an ECharts click handler that calls set_state_field/unset_state_field.
+  // getIdExpr is a JS expression (string) that evaluates to the value to store in state;
+  // for plain fields it's just 'label', for FK fields it resolves to the raw FK ID.
+  const makeClickHandler = (getIdExpr) =>
+    factor_field
+      ? `myChart.on('click', (params) => {
+          const key = ${JSON.stringify(factor_field)};
+          const label = params.name;
+          const stateVal = ${getIdExpr};
+          const selected = ${
+            selected != null ? JSON.stringify(String(selected)) : "null"
+          };
+          if (selected !== null && (''+selected) === (''+label)) {
+            unset_state_field(key);
+          } else {
+            set_state_field(key, stateVal);
+          }
+        });`
+      : "";
   const titleHeight = 30;
   const titleObj = title
     ? {
@@ -148,14 +168,30 @@ const buildChartScript = (
         myChart.setOption(option);`;
 
     case "bar": {
-      const { categories, series: barSeries } = data;
+      const { categories, categoryIds, series: barSeries } = data;
+      const barClickHandler = makeClickHandler(
+        categoryIds
+          ? `(${JSON.stringify(categoryIds)}[params.dataIndex] ?? label)`
+          : "label"
+      );
       const horizontal = bar_orientation === "horizontal";
       const seriesArr = JSON.stringify(
         barSeries.map((s) => ({
           type: "bar",
           name: s.name,
           stack: bar_stack ? "total" : undefined,
-          data: s.values,
+          data: selected
+            ? s.values.map((v, i) => ({
+                value: v,
+                itemStyle: {
+                  opacity:
+                    "" + (categoryIds ? categoryIds[i] : categories[i]) ===
+                    "" + selected
+                      ? 1.0
+                      : 0.4,
+                },
+              }))
+            : s.values,
         }))
       );
       const categoryAxis = JSON.stringify({
@@ -201,11 +237,25 @@ const buildChartScript = (
           ${legendOption}
           series: ${seriesArr}
         };
-        myChart.setOption(option);`;
+        myChart.setOption(option);
+        ${barClickHandler}`;
     }
 
     case "pie": {
-      const pieData = JSON.stringify(data);
+      const pieClickHandler = makeClickHandler(
+        "(params.data && params.data.fkId != null ? params.data.fkId : label)"
+      );
+      const pieData = JSON.stringify(
+        selected
+          ? data.map((item) => ({
+              ...item,
+              ...("" + (item.fkId != null ? item.fkId : item.name) ===
+              "" + selected
+                ? { selected: true }
+                : {}),
+            }))
+          : data
+      );
       const radius = pie_donut
         ? `['${Math.round(
             70 - ((donut_ring_width || 50) / 100) * 70
@@ -219,6 +269,7 @@ const buildChartScript = (
             ${titleOption}
             series: [{
               type: 'pie',
+              selectedMode: 'single',
               radius: ${radius},
               label: {
                 backgroundColor: '#F6F8FC',
@@ -258,7 +309,8 @@ const buildChartScript = (
               data: ${pieData}
             }]
           };
-          myChart.setOption(option);`;
+          myChart.setOption(option);
+          ${pieClickHandler}`;
       }
       const label = useLegend
         ? { position: "inside", formatter: "{c} ({d}%)" }
@@ -269,12 +321,14 @@ const buildChartScript = (
           ${useLegend ? "legend: {}," : ""}
           series: [{
             type: 'pie',
+            selectedMode: 'single',
             radius: ${radius},
             label: ${JSON.stringify(label)},
             data: ${pieData}
           }]
         };
-        myChart.setOption(option);`;
+        myChart.setOption(option);
+        ${pieClickHandler}`;
     }
 
     case "scatter":
@@ -783,11 +837,13 @@ const loadAggregated = async (
     return filtered.map((r) => ({
       name: getLabel(r[factor_field]),
       value: getVal(r, outcome_field),
+      ...(factorIsFK && { fkId: r[factor_field] }),
     }));
   }
   const categories = filtered.map((r) => getLabel(r[factor_field]));
   return {
     categories,
+    ...(factorIsFK && { categoryIds: filtered.map((r) => r[factor_field]) }),
     series: (outcomes || []).map(({ outcome_field: of_ }) => ({
       name: of_ || "Count",
       values: filtered.map((r) => getVal(r, of_)),
@@ -941,10 +997,31 @@ const loadRows = async (
 const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
   const table = await Table.findOne({ id: table_id });
   const fields = await table.getFields();
-  readState(state, fields);
-  const where = await stateFieldsToWhere({ fields, state });
+
+  // Extract the selected factor value for highlighting before stripping it from state.
+  // The factor field is excluded from the WHERE clause so the chart always shows all
+  // data — other views on the page use the state to filter, the chart only highlights.
+  const factorField = config.factor_field;
+  const selected =
+    factorField &&
+    state[factorField] &&
+    !(Array.isArray(state[factorField]) || state[factorField]?.in)
+      ? state[factorField]
+      : undefined;
+  const stateForWhere = factorField
+    ? Object.fromEntries(
+        Object.entries(state).filter(([k]) => k !== factorField)
+      )
+    : state;
+
+  readState(stateForWhere, fields);
+  const where = await stateFieldsToWhere({ fields, state: stateForWhere });
   if (config.include_fml) {
-    const ctx = { ...state, user_id: req?.user?.id || null, user: req?.user };
+    const ctx = {
+      ...stateForWhere,
+      user_id: req?.user?.id || null,
+      user: req?.user,
+    };
     mergeIntoWhere(where, jsexprToWhere(config.include_fml, ctx, fields) || {});
   }
 
@@ -975,7 +1052,7 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     data = prepChartData(rows, effectiveConfig);
   }
 
-  const chartScript = buildChartScript(data, config);
+  const chartScript = buildChartScript(data, { ...config, selected });
   if (!chartScript) return "";
 
   const divid = `echarts_${viewname}`;
