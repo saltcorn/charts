@@ -180,7 +180,7 @@ const buildChartsForm = async (context) => {
             type: "String",
             required: true,
             sublabel:
-              "The numeric value to aggregate (e.g. revenue, score). Use 'Row count' to count rows.",
+              "The numeric value to aggregate (e.g. duration, score). Use 'Row count' to count rows.",
             attributes: { options: outcome_fields },
           },
         ],
@@ -191,7 +191,7 @@ const buildChartsForm = async (context) => {
         type: "String",
         required: true,
         sublabel:
-          "The numeric value to aggregate (e.g. revenue, score). Use 'Row count' to count rows.",
+          "The numeric value to aggregate (e.g. duration, score). Use 'Row count' to count rows.",
         showIf: { plot_type: ["pie", "funnel", "gauge"] },
         attributes: { options: outcome_fields },
       },
