@@ -1,6 +1,6 @@
 {
   "name": "@saltcorn/charts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ECharts visualisations for Saltcorn",
   "main": "index.js",
   "dependencies": {
