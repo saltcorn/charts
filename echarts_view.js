@@ -227,6 +227,7 @@ const buildChartScript = (
       );
       return `
         var option = {
+            ${selected != null ? "animation: false," : ""}
             ${titleOption}
             ${gridOption}
           ${
@@ -263,13 +264,16 @@ const buildChartScript = (
         : "'70%'";
       const useLegend = pie_label_position === "legend";
       const useOutside = pie_label_position === "outside";
+      const noAnimation = selected != null ? "animation: false," : "";
       if (useOutside) {
         return `
           var option = {
+            ${noAnimation}
             ${titleOption}
             series: [{
               type: 'pie',
               selectedMode: 'single',
+              selectedOffset: 35,
               radius: ${radius},
               label: {
                 backgroundColor: '#F6F8FC',
@@ -317,6 +321,7 @@ const buildChartScript = (
         : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
       return `
         var option = {
+            ${noAnimation}
             ${titleOption}
           ${useLegend ? "legend: {}," : ""}
           series: [{
