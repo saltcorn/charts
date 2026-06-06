@@ -757,7 +757,7 @@ const loadAggregated = async (
   const isCount = (of_) => !of_ || of_ === "Row count" || stat === "count";
   const aggFor = (of_) =>
     isCount(of_) ? { aggregate: "count" } : { field: of_, aggregate: stat };
-
+  const outcomeFieldField = outcome_field ? table.getField(outcome_field) : null
   if (plot_type === "gauge") {
     if (gauge_type === "group_by_field" && gauge_group_field) {
       const aggRows = await table.aggregationQuery(
@@ -790,7 +790,7 @@ const loadAggregated = async (
       { where }
     );
     const items = [
-      { value: result.__val, name: gauge_name || outcome_field || "Value" },
+      { value: result.__val, name: gauge_name || outcomeFieldField?.label || outcome_field || "Value" },
     ];
     return positionGaugeItems(items, (item) => item, gauge_style);
   }
@@ -849,10 +849,13 @@ const loadAggregated = async (
   return {
     categories,
     ...(factorIsFK && { categoryIds: filtered.map((r) => r[factor_field]) }),
-    series: (outcomes || []).map(({ outcome_field: of_ }) => ({
-      name: of_ || "Count",
-      values: filtered.map((r) => getVal(r, of_)),
-    })),
+    series: (outcomes || []).map(({ outcome_field: of_ }) => {
+      const ofField = of_ ? table.getField(of_) : null
+      return {
+        name: ofField?.label || of_ || "Count",
+        values: filtered.map((r) => getVal(r, of_)),
+      };
+    }),
   };
 };
 
