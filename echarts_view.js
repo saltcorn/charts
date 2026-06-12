@@ -24,6 +24,20 @@ const get_state_fields = async (table_id, viewname, config) => {
   return [];
 };
 
+const resolveOverride = (name, overrides) => {
+  if (!overrides?.length || name == null) return {};
+  return overrides
+    .filter((o) => o.series_name === String(name))
+    .reduce(
+      (acc, o) => ({
+        ...acc,
+        ...(o.color ? { color: o.color } : {}),
+        ...(o.label ? { label: o.label } : {}),
+      }),
+      {}
+    );
+};
+
 const buildChartScript = (
   data,
   {
@@ -54,6 +68,11 @@ const buildChartScript = (
     heatmap_color_scale,
     factor_field,
     selected,
+    overrides,
+    single_override_color,
+    single_override_label,
+    gauge_override_color,
+    gauge_override_label,
   }
 ) => {
   // Builds an ECharts click handler that calls set_state_field/unset_state_field.
@@ -103,12 +122,19 @@ const buildChartScript = (
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "line",
-          name: s.name,
-          smooth: !!smooth,
-          data: s.points,
-        }));
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, overrides);
+          return {
+            type: "line",
+            name: ov.label || s.name,
+            smooth: !!smooth,
+            ...(ov.color && {
+              itemStyle: { color: ov.color },
+              lineStyle: { color: ov.color },
+            }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
             ${titleOption}
@@ -126,21 +152,35 @@ const buildChartScript = (
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{ type: 'line', smooth: ${!!smooth}, data: ${JSON.stringify(
-        data
-      )} }]
+          series: [${JSON.stringify({
+            type: "line",
+            smooth: !!smooth,
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+              lineStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
     case "area":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "line",
-          name: s.name,
-          smooth: !!smooth,
-          areaStyle: {},
-          data: s.points,
-        }));
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, overrides);
+          return {
+            type: "line",
+            name: ov.label || s.name,
+            smooth: !!smooth,
+            areaStyle: ov.color ? { color: ov.color } : {},
+            ...(ov.color && {
+              itemStyle: { color: ov.color },
+              lineStyle: { color: ov.color },
+            }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
             ${titleOption}
@@ -158,12 +198,19 @@ const buildChartScript = (
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{
-            type: 'line',
-            smooth: ${!!smooth},
-            areaStyle: {},
-            data: ${JSON.stringify(data)}
-          }]
+          series: [${JSON.stringify({
+            type: "line",
+            smooth: !!smooth,
+            areaStyle: single_override_color
+              ? { color: single_override_color }
+              : {},
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+              lineStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
@@ -176,23 +223,28 @@ const buildChartScript = (
       );
       const horizontal = bar_orientation === "horizontal";
       const seriesArr = JSON.stringify(
-        barSeries.map((s) => ({
-          type: "bar",
-          name: s.name,
-          stack: bar_stack ? "total" : undefined,
-          data: selected
-            ? s.values.map((v, i) => ({
-                value: v,
-                itemStyle: {
-                  opacity:
-                    "" + (categoryIds ? categoryIds[i] : categories[i]) ===
-                    "" + selected
-                      ? 1.0
-                      : 0.4,
-                },
-              }))
-            : s.values,
-        }))
+        barSeries.map((s) => {
+          const ov = resolveOverride(s.name, overrides);
+          return {
+            type: "bar",
+            name: ov.label || s.name,
+            stack: bar_stack ? "total" : undefined,
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            data: selected
+              ? s.values.map((v, i) => ({
+                  value: v,
+                  itemStyle: {
+                    ...(ov.color && { color: ov.color }),
+                    opacity:
+                      "" + (categoryIds ? categoryIds[i] : categories[i]) ===
+                      "" + selected
+                        ? 1.0
+                        : 0.4,
+                  },
+                }))
+              : s.values,
+          };
+        })
       );
       const categoryAxis = JSON.stringify({
         type: "category",
@@ -247,7 +299,7 @@ const buildChartScript = (
         "(params.data && params.data.fkId != null ? params.data.fkId : label)"
       );
       const pieData = JSON.stringify(
-        selected
+        (selected
           ? data.map((item) => ({
               ...item,
               ...("" + (item.fkId != null ? item.fkId : item.name) ===
@@ -256,6 +308,18 @@ const buildChartScript = (
                 : {}),
             }))
           : data
+        ).map((item) => {
+          const ov = resolveOverride(item.name, overrides);
+          const _n = parseFloat(item.value);
+          const value = isFinite(_n) ? +_n.toFixed(2) : item.value;
+          return {
+            ...item,
+            value,
+            ...(ov.label && { name: ov.label }),
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(ov.selected && { selected: true }),
+          };
+        })
       );
       const radius = pie_donut
         ? `['${Math.round(
@@ -338,11 +402,15 @@ const buildChartScript = (
 
     case "scatter":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "scatter",
-          name: s.name,
-          data: s.points,
-        }));
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, overrides);
+          return {
+            type: "scatter",
+            name: ov.label || s.name,
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
             ${titleOption}
@@ -360,7 +428,14 @@ const buildChartScript = (
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{ type: 'scatter', data: ${JSON.stringify(data)} }]
+          series: [${JSON.stringify({
+            type: "scatter",
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
@@ -390,6 +465,14 @@ const buildChartScript = (
 
     case "funnel": {
       const legendBottom = mbottom ?? 0;
+      const funnelData = data.map((item) => {
+        const ov = resolveOverride(item.name, overrides);
+        return {
+          ...item,
+          ...(ov.label && { name: ov.label }),
+          ...(ov.color && { itemStyle: { color: ov.color } }),
+        };
+      });
       const funnelSeries = JSON.stringify({
         name: "Funnel",
         type: "funnel",
@@ -400,7 +483,7 @@ const buildChartScript = (
         ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
         bottom: legendBottom + legendHeight,
         label: { show: true, position: "inside", formatter: "{d}%" },
-        data,
+        data: funnelData,
       });
       return `
         var option = {
@@ -463,6 +546,16 @@ const buildChartScript = (
     }
 
     case "gauge": {
+      const gaugeData =
+        gauge_override_color || gauge_override_label
+          ? data.map((d) => ({
+              ...d,
+              ...(gauge_override_label && { name: gauge_override_label }),
+              ...(gauge_override_color && {
+                itemStyle: { color: gauge_override_color },
+              }),
+            }))
+          : data;
       const gaugeMin = gauge_min ?? 0;
       const gaugeMax = (() => {
         if (gauge_max != null) return gauge_max;
@@ -493,7 +586,7 @@ const buildChartScript = (
               splitLine: { show: false, distance: 0, length: 10 },
               axisTick: { show: false },
               axisLabel: { show: false, distance: 50 },
-              data: ${JSON.stringify(data)},
+              data: ${JSON.stringify(gaugeData)},
               title: { fontSize: 14 },
               detail: {
                 width: 50,
@@ -530,7 +623,7 @@ const buildChartScript = (
             },
             progress: { show: true, overlap: true, roundCap: true },
             axisLine: { roundCap: true },
-            data: ${JSON.stringify(data)},
+            data: ${JSON.stringify(gaugeData)},
             title: { fontSize: 14 },
             detail: {
               width: 40,
@@ -757,7 +850,9 @@ const loadAggregated = async (
   const isCount = (of_) => !of_ || of_ === "Row count" || stat === "count";
   const aggFor = (of_) =>
     isCount(of_) ? { aggregate: "count" } : { field: of_, aggregate: stat };
-  const outcomeFieldField = outcome_field ? table.getField(outcome_field) : null
+  const outcomeFieldField = outcome_field
+    ? table.getField(outcome_field)
+    : null;
   if (plot_type === "gauge") {
     if (gauge_type === "group_by_field" && gauge_group_field) {
       const aggRows = await table.aggregationQuery(
@@ -790,7 +885,11 @@ const loadAggregated = async (
       { where }
     );
     const items = [
-      { value: result.__val, name: gauge_name || outcomeFieldField?.label || outcome_field || "Value" },
+      {
+        value: result.__val,
+        name:
+          gauge_name || outcomeFieldField?.label || outcome_field || "Value",
+      },
     ];
     return positionGaugeItems(items, (item) => item, gauge_style);
   }
@@ -850,7 +949,7 @@ const loadAggregated = async (
     categories,
     ...(factorIsFK && { categoryIds: filtered.map((r) => r[factor_field]) }),
     series: (outcomes || []).map(({ outcome_field: of_ }) => {
-      const ofField = of_ ? table.getField(of_) : null
+      const ofField = of_ ? table.getField(of_) : null;
       return {
         name: ofField?.label || of_ || "Count",
         values: filtered.map((r) => getVal(r, of_)),

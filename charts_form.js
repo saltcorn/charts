@@ -5,6 +5,48 @@ const { code } = require("@saltcorn/markup/tags");
 
 const multiAblePlots = ["line", "area", "scatter"];
 
+const overrideFields = [
+  {
+    name: "series_name",
+    label: "Series name",
+    type: "String",
+    required: true,
+    sublabel: "Exact name of the series or data item to match",
+  },
+  {
+    name: "color",
+    label: "Color",
+    type: "String",
+    sublabel: "Hex color, e.g. #22ee55",
+    attributes: { asideNext: true },
+  },
+  {
+    name: "label",
+    label: "Label",
+    type: "String",
+    sublabel: "Override display name",
+  },
+];
+
+const barOverrideFields = [
+  {
+    ...overrideFields[0],
+    label: "Category",
+    sublabel: "Exact name of the outcome field to match",
+  },
+  ...overrideFields.slice(1),
+];
+
+const pieOverrideFields = [
+  ...overrideFields,
+  {
+    name: "selected",
+    label: "Explode slice",
+    type: "Bool",
+    sublabel: "Pull this slice out for emphasis",
+  },
+];
+
 const buildChartsForm = async (context) => {
   const table = await Table.findOne({ id: context.table_id });
   const fields = await table.getFields();
@@ -396,8 +438,81 @@ const buildChartsForm = async (context) => {
         name: "show_legend",
         label: "Show legend",
         type: "Bool",
-        showIf: { plot_type: ["line", "area", "scatter", "bar"] },
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: ["multiple", "group_by_field"],
+        },
       },
+      {
+        name: "show_legend",
+        label: "Show legend",
+        type: "Bool",
+        showIf: { plot_type: "bar" },
+      },
+      { input_type: "section_header", label: "Overrides" },
+      {
+        name: "single_override_color",
+        label: "Color",
+        type: "String",
+        sublabel: "Hex color, e.g. #22ee55",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: "single",
+        },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "single_override_label",
+        label: "Label",
+        type: "String",
+        sublabel: "Override display name",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: "single",
+        },
+      },
+      new FieldRepeat({
+        name: "overrides",
+        label: "Override",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: ["multiple", "group_by_field"],
+        },
+        fields: overrideFields,
+      }),
+      new FieldRepeat({
+        name: "overrides",
+        label: "Override",
+        showIf: { plot_type: "bar" },
+        fields: barOverrideFields,
+      }),
+      new FieldRepeat({
+        name: "overrides",
+        label: "Override",
+        showIf: { plot_type: "funnel" },
+        fields: overrideFields,
+      }),
+      {
+        name: "gauge_override_color",
+        label: "Color",
+        type: "String",
+        sublabel: "Hex color, e.g. #22ee55",
+        showIf: { plot_type: "gauge" },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "gauge_override_label",
+        label: "Label",
+        type: "String",
+        sublabel: "Override display name",
+        showIf: { plot_type: "gauge" },
+      },
+      new FieldRepeat({
+        name: "overrides",
+        label: "Override",
+        showIf: { plot_type: "pie" },
+        fields: pieOverrideFields,
+      }),
       { input_type: "section_header", label: "Margins" },
       {
         name: "mleft",
