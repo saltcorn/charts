@@ -248,6 +248,15 @@ const buildChartsForm = async (context) => {
         attributes: { options: factor_fields },
       },
       {
+        name: "bar_series_field",
+        label: "Series field",
+        type: "String",
+        sublabel:
+          "Optional: pivot bars into stacked series by this categorical field (e.g. finished, status).",
+        showIf: { plot_type: "bar" },
+        attributes: { options: ["", ...factor_fields] },
+      },
+      {
         name: "statistic",
         label: "Statistic",
         type: "String",

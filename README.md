@@ -9,7 +9,7 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Line** | Line chart with optional smooth curves. Supports single series, multiple series, or group-by-field. |
 | **Area** | Filled area chart. Same options as line. |
 | **Scatter** | Scatter plot. Supports single or multiple series. |
-| **Bar** | Vertical or horizontal bar chart. Supports multiple outcome fields, stacking, and axis title/limits. |
+| **Bar** | Vertical or horizontal bar chart. Supports multiple outcome fields, stacking, series field pivoting, and axis title/limits. |
 | **Pie** | Pie or donut chart. Label position: inside, outside (rich label), or legend. |
 | **Histogram** | Histogram using ECharts statistical transforms. |
 | **Funnel** | Funnel chart with descending sort and percentage labels. |
@@ -42,8 +42,9 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 | Option | Description |
 |--------|-------------|
-| **Factor field** | Categorical field whose distinct values become the bars. |
-| **Outcomes** | One or more numeric fields (or "Row count") to aggregate. Each becomes a series. |
+| **Factor field** | Categorical field whose distinct values appear as groups along the X axis (e.g. `responsible` → one bar group per user). |
+| **Series field** | Optional second categorical field that splits each bar group into separate series — one per distinct value of this field. For example, a Tasks table with `factor = responsible` and `series = finished` produces one bar group per user, with each group split into a "true" bar and a "false" bar showing how many tasks are finished vs. unfinished. Enable **Stack series** to stack them. When this field is set, the first Outcome (or Row count if none) is used as the aggregated value; the Outcomes list is otherwise ignored. |
+| **Outcomes** | One or more numeric fields (or "Row count") to aggregate. Each becomes its own series (not used when Series field is set). |
 | **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
 | **Stack series** | Stack outcome series on top of each other. |
 | **Orientation** | Vertical (default) or horizontal. |

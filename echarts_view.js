@@ -249,6 +249,7 @@ const buildChartScript = (
       const categoryAxis = JSON.stringify({
         type: "category",
         data: categories,
+        axisLabel: { interval: 0 },
       });
       const axisTitle =
         bar_axis_title ||
@@ -700,6 +701,7 @@ const prepChartData = (
     heatmap_x_field,
     heatmap_y_field,
     heatmap_value_field,
+    bar_series_field,
   }
 ) => {
   const applyNullLabel = (v) =>
@@ -796,6 +798,27 @@ const prepChartData = (
         ),
       }));
     }
+    if (bar_series_field) {
+      const seriesVals = [
+        ...new Set(rows_.map((r) => String(r[bar_series_field] ?? "null"))),
+      ];
+      return {
+        categories: allCategories,
+        series: seriesVals.map((sv) => ({
+          name: sv,
+          values: allCategories.map((cat) =>
+            aggregateField(
+              rows_.filter(
+                (r) =>
+                  String(applyNullLabel(r[factor_field])) === cat &&
+                  String(r[bar_series_field] ?? "null") === sv
+              ),
+              outcomes?.[0]?.outcome_field
+            )
+          ),
+        })),
+      };
+    }
     const seriesData = (outcomes || []).map(({ outcome_field: of }) => ({
       name: of || "Count",
       values: allCategories.map((cat) =>
@@ -844,6 +867,7 @@ const loadAggregated = async (
     gauge_series,
     gauge_style,
     gauge_name,
+    bar_series_field,
   }
 ) => {
   const stat = (statistic || "count").toLowerCase();
@@ -904,18 +928,6 @@ const loadAggregated = async (
   const factorIsFK = !!(
     factor_field_obj?.is_fkey && factor_field_obj.attributes.summary_field
   );
-  const allOutcomeFields =
-    plot_type === "bar"
-      ? (outcomes || []).map((o) => o.outcome_field)
-      : [outcome_field];
-  const aggregations = {};
-  for (const of_ of allOutcomeFields) {
-    aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
-  }
-  const aggRows = await table.aggregationQuery(aggregations, {
-    where,
-    groupBy: [factor_field],
-  });
   let labelMap = null;
   if (factorIsFK) {
     const refTable = await Table.findOne({
@@ -933,6 +945,56 @@ const loadAggregated = async (
     }
     return String(applyNL(fkId));
   };
+  if (plot_type === "bar" && bar_series_field) {
+    const of_ = outcomes?.[0]?.outcome_field;
+    const aggKey = isCount(of_) ? "__count" : of_;
+    const bsAggRows = await table.aggregationQuery(
+      { [aggKey]: aggFor(of_) },
+      { where, groupBy: [factor_field, bar_series_field] }
+    );
+    const bsFiltered = show_missing
+      ? bsAggRows
+      : bsAggRows.filter((r) => !isMiss(r[factor_field]));
+    const getBsVal = (r) => (isCount(of_) ? r.__count : r[of_]);
+    const catSeen = new Set();
+    const categories = [];
+    for (const r of bsFiltered) {
+      const cat = getLabel(r[factor_field]);
+      if (!catSeen.has(cat)) {
+        categories.push(cat);
+        catSeen.add(cat);
+      }
+    }
+    const seriesVals = [
+      ...new Set(bsFiltered.map((r) => String(r[bar_series_field] ?? "null"))),
+    ];
+    const lookup = new Map();
+    for (const r of bsFiltered) {
+      const key = `${getLabel(r[factor_field])}\x00${String(
+        r[bar_series_field] ?? "null"
+      )}`;
+      lookup.set(key, getBsVal(r));
+    }
+    return {
+      categories,
+      series: seriesVals.map((sv) => ({
+        name: sv,
+        values: categories.map((cat) => lookup.get(`${cat}\x00${sv}`) ?? 0),
+      })),
+    };
+  }
+  const allOutcomeFields =
+    plot_type === "bar"
+      ? (outcomes || []).map((o) => o.outcome_field)
+      : [outcome_field];
+  const aggregations = {};
+  for (const of_ of allOutcomeFields) {
+    aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
+  }
+  const aggRows = await table.aggregationQuery(aggregations, {
+    where,
+    groupBy: [factor_field],
+  });
   const filtered = show_missing
     ? aggRows
     : aggRows.filter((r) => !isMiss(r[factor_field]));
@@ -979,6 +1041,7 @@ const loadRows = async (
     heatmap_x_field,
     heatmap_y_field,
     heatmap_value_field,
+    bar_series_field,
   }
 ) => {
   const joinFields = {};
@@ -1060,6 +1123,7 @@ const loadRows = async (
       qfields.push(factor_field);
     }
     if (plot_type === "bar") {
+      if (bar_series_field) qfields.push(bar_series_field);
       for (const { outcome_field: of } of outcomes || []) {
         if (of && of !== "Row count") qfields.push(of);
       }
