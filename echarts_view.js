@@ -1226,13 +1226,15 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
   const chartScript = buildChartScript(data, { ...config, selected });
   if (!chartScript) return "";
 
-  const divid = `echarts_${viewname}`;
+  const divid = `echarts_${viewname}_${Math.random().toString(36).slice(2, 8)}`;
+  const chartHeight = config.chart_height || 400;
   return (
-    div({ id: divid, style: "width: 600px; height: 400px;" }) +
+    div({ id: divid, style: `width: 100%; height: ${chartHeight}px;` }) +
     script(
       domReady(`
         var chartDom = document.getElementById('${divid}');
         var myChart = echarts.init(chartDom);
+        new ResizeObserver(function() { myChart.resize(); }).observe(chartDom);
         ${chartScript}
       `)
     )

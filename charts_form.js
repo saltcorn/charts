@@ -522,6 +522,14 @@ const buildChartsForm = async (context) => {
         showIf: { plot_type: "pie" },
         fields: pieOverrideFields,
       }),
+      { input_type: "section_header", label: "Dimensions" },
+      {
+        name: "chart_height",
+        label: "Height (px)",
+        type: "Integer",
+        sublabel: "Chart height in pixels. Default: 400.",
+        default: 400,
+      },
       { input_type: "section_header", label: "Margins" },
       {
         name: "mleft",
