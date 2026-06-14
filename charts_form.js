@@ -31,8 +31,9 @@ const overrideFields = [
 const barOverrideFields = [
   {
     ...overrideFields[0],
-    label: "Category",
-    sublabel: "Exact name of the outcome field to match",
+    label: "Series name",
+    sublabel:
+      "Exact series name to match — the outcome field name, or the series field value when Series field is set",
   },
   ...overrideFields.slice(1),
 ];
@@ -269,8 +270,8 @@ const buildChartsForm = async (context) => {
         name: "fill_color",
         label: "Fill color",
         type: "String",
-        sublabel: "Hex color for the gauge arc or pie slices, e.g. #4e79a7",
-        showIf: { plot_type: ["number", "pie"] },
+        sublabel: "Hex color for the gauge arc, e.g. #4e79a7",
+        showIf: { plot_type: ["number", "gauge"] },
       },
       {
         name: "number_ring_width",
@@ -285,7 +286,8 @@ const buildChartsForm = async (context) => {
         label: "State field",
         type: "String",
         required: true,
-        sublabel: "Name of the state/URL parameter that contains the number to display.",
+        sublabel:
+          "Name of the state/URL parameter that contains the number to display.",
         showIf: { plot_type: "number" },
       },
       {
@@ -305,7 +307,7 @@ const buildChartsForm = async (context) => {
       },
       {
         name: "gauge_style",
-        label: "Gauge style",
+        label: "Style",
         type: "String",
         showIf: { plot_type: ["gauge", "number"] },
         attributes: {
@@ -467,6 +469,15 @@ const buildChartsForm = async (context) => {
         showIf: { show_missing: true },
       },
       {
+        name: "filter_on_click",
+        label: "Filter on click",
+        type: "Bool",
+        sublabel:
+          "Clicking a bar, slice, or funnel stage sets a page state filter.",
+        showIf: { plot_type: ["bar", "pie", "funnel"] },
+        default: true,
+      },
+      {
         name: "show_legend",
         label: "Show legend",
         type: "Bool",
@@ -504,7 +515,7 @@ const buildChartsForm = async (context) => {
         },
       },
       new FieldRepeat({
-        name: "overrides",
+        name: "line_overrides",
         label: "Override",
         showIf: {
           plot_type: ["line", "area", "scatter"],
@@ -513,13 +524,13 @@ const buildChartsForm = async (context) => {
         fields: overrideFields,
       }),
       new FieldRepeat({
-        name: "overrides",
+        name: "bar_overrides",
         label: "Override",
         showIf: { plot_type: "bar" },
         fields: barOverrideFields,
       }),
       new FieldRepeat({
-        name: "overrides",
+        name: "funnel_overrides",
         label: "Override",
         showIf: { plot_type: "funnel" },
         fields: overrideFields,
@@ -540,24 +551,17 @@ const buildChartsForm = async (context) => {
         showIf: { plot_type: "gauge" },
       },
       new FieldRepeat({
-        name: "overrides",
+        name: "pie_overrides",
         label: "Override",
         showIf: { plot_type: "pie" },
         fields: pieOverrideFields,
       }),
       {
-        name: "filter_on_click",
-        label: "Filter on click",
-        type: "Bool",
-        sublabel: "Clicking a bar, slice, or funnel stage sets a page state filter.",
-        showIf: { plot_type: ["bar", "pie", "funnel"] },
-        default: true,
-      },
-      {
         name: "text_color",
         label: "Text color",
         type: "String",
-        sublabel: "Hex color applied to all chart text (labels, axes, legend). E.g. #333333",
+        sublabel:
+          "Hex color applied to all chart text (labels, axes, legend). E.g. #333333",
       },
       { input_type: "section_header", label: "Dimensions" },
       {
@@ -567,7 +571,7 @@ const buildChartsForm = async (context) => {
         sublabel: "Chart height in pixels. Default: 400.",
         default: 400,
       },
-      { input_type: "section_header", label: "Margins" },
+      { input_type: "section_header", label: "Padding" },
       {
         name: "mleft",
         label: "Left (px)",

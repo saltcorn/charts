@@ -1,6 +1,6 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Table = require("@saltcorn/data/models/table");
-const { div, script, domReady } = require("@saltcorn/markup/tags");
+const { div, script, domReady, text_attr } = require("@saltcorn/markup/tags");
 const {
   readState,
   stateFieldsToWhere,
@@ -64,7 +64,10 @@ const buildChartScript = (
     factor_field,
     filter_on_click,
     selected,
-    overrides,
+    line_overrides,
+    bar_overrides,
+    funnel_overrides,
+    pie_overrides,
     single_override_color,
     single_override_label,
     gauge_override_color,
@@ -93,14 +96,15 @@ const buildChartScript = (
           }
         });`
       : "";
-  const legendOption = show_legend ? `legend: {},` : "";
-  const gridOption =
-    "grid: { left: 0, right: 0, top: 0, bottom: 0, containLabel: true },";
+  const legendOption = show_legend ? `legend: { bottom: 0 },` : "";
+  const gridOption = `grid: { left: 0, right: 0, top: 0, bottom: ${
+    show_legend ? 50 : 0
+  }, containLabel: true },`;
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, overrides);
+          const ov = resolveOverride(s.name, line_overrides);
           return {
             type: "line",
             name: ov.label || s.name,
@@ -145,7 +149,7 @@ const buildChartScript = (
     case "area":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, overrides);
+          const ov = resolveOverride(s.name, line_overrides);
           return {
             type: "line",
             name: ov.label || s.name,
@@ -201,7 +205,7 @@ const buildChartScript = (
       const horizontal = bar_orientation === "horizontal";
       const seriesArr = JSON.stringify(
         barSeries.map((s) => {
-          const ov = resolveOverride(s.name, overrides);
+          const ov = resolveOverride(s.name, bar_overrides);
           return {
             type: "bar",
             name: ov.label || s.name,
@@ -287,15 +291,14 @@ const buildChartScript = (
             }))
           : data
         ).map((item) => {
-          const ov = resolveOverride(item.name, overrides);
+          const ov = resolveOverride(item.name, pie_overrides);
           const _n = parseFloat(item.value);
           const value = isFinite(_n) ? +_n.toFixed(2) : item.value;
-          const sliceColor = ov.color || fill_color;
           return {
             ...item,
             value,
             ...(ov.label && { name: ov.label }),
-            ...(sliceColor && { itemStyle: { color: sliceColor } }),
+            ...(ov.color && { itemStyle: { color: ov.color } }),
             ...(ov.selected && { selected: true }),
           };
         })
@@ -305,11 +308,15 @@ const buildChartScript = (
             70 - ((donut_ring_width || 50) / 100) * 70
           )}%', '70%']`
         : "'70%'";
-      const useLegend = pie_label_position === "legend";
+      const effectiveLabelPos =
+        pie_label_position === "outside" ? "legend" : pie_label_position;
+      const useLegend = effectiveLabelPos === "legend";
       const noAnimation = selected != null ? "animation: false," : "";
-      const label = useLegend
-        ? { position: "inside", formatter: "{c} ({d}%)" }
-        : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
+      const label = {
+        position: "inside",
+        formatter: useLegend ? "{c} ({d}%)" : "{b}\n{c} ({d}%)",
+        ...(text_color && { color: text_color }),
+      };
       const legendOpt = useLegend ? "legend: {}," : "";
       return `
         var option = {
@@ -331,7 +338,7 @@ const buildChartScript = (
     case "scatter":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, overrides);
+          const ov = resolveOverride(s.name, line_overrides);
           return {
             type: "scatter",
             name: ov.label || s.name,
@@ -393,7 +400,7 @@ const buildChartScript = (
 
     case "funnel": {
       const funnelData = data.map((item) => {
-        const ov = resolveOverride(item.name, overrides);
+        const ov = resolveOverride(item.name, funnel_overrides);
         return {
           ...item,
           ...(ov.label && { name: ov.label }),
@@ -408,14 +415,14 @@ const buildChartScript = (
         left: 0,
         right: 0,
         top: 0,
-        bottom: 0,
+        bottom: 50,
         label: { show: true, position: "inside", formatter: "{d}%" },
         data: funnelData,
       });
       return `
         var option = {
 
-          legend: {},
+          legend: { bottom: 0 },
           tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
           series: [${funnelSeries}]
         };
@@ -494,7 +501,9 @@ const buildChartScript = (
                   fill_color ? `color: ${JSON.stringify(fill_color)}` : ""
                 } }
               },
-              axisLine: { lineStyle: { width: ${number_ring_width ?? 40} } },
+              axisLine: { lineStyle: { width: ${
+                parseInt(number_ring_width, 10) || 40
+              } } },
               splitLine: { show: false },
               axisTick: { show: false },
               axisLabel: { show: false },
@@ -524,6 +533,7 @@ const buildChartScript = (
                 : ""
             }
             detail: {
+              width: Math.min(30, Math.round(myChart.getWidth() * 0.12)),
               offsetCenter: ['0%', '0%'],
               ${text_color ? `color: ${JSON.stringify(text_color)},` : ""}
             },
@@ -722,8 +732,7 @@ const prepChartData = (
     plot_type === "bar" ||
     plot_type === "pie" ||
     plot_type === "funnel" ||
-    plot_type === "gauge" ||
-    plot_type === "number"
+    plot_type === "gauge"
   ) {
     const rows_ =
       plot_type === "gauge" || show_missing
@@ -933,6 +942,29 @@ const loadAggregated = async (
     }
     return String(applyNL(fkId));
   };
+  let seriesLabelMap = null;
+  if (bar_series_field) {
+    const series_field_obj = fields.find((f) => f.name === bar_series_field);
+    if (
+      series_field_obj?.is_fkey &&
+      series_field_obj.attributes.summary_field
+    ) {
+      const refTable = await Table.findOne({
+        name: series_field_obj.reftable_name,
+      });
+      const summaryField = series_field_obj.attributes.summary_field;
+      const labelRows = refTable ? await refTable.getRows({}) : [];
+      seriesLabelMap = new Map(labelRows.map((r) => [r.id, r[summaryField]]));
+    }
+  }
+  const getSeriesLabel = (val) => {
+    if (seriesLabelMap) {
+      if (isMiss(val)) return "null";
+      const label = seriesLabelMap.get(val);
+      return label != null ? String(label) : String(val);
+    }
+    return String(val ?? "null");
+  };
   if (plot_type === "bar" && bar_series_field) {
     const of_ = outcomes?.[0]?.outcome_field;
     const aggKey = isCount(of_) ? "__count" : of_;
@@ -954,12 +986,12 @@ const loadAggregated = async (
       }
     }
     const seriesVals = [
-      ...new Set(bsFiltered.map((r) => String(r[bar_series_field] ?? "null"))),
+      ...new Set(bsFiltered.map((r) => getSeriesLabel(r[bar_series_field]))),
     ];
     const lookup = new Map();
     for (const r of bsFiltered) {
-      const key = `${getLabel(r[factor_field])}\x00${String(
-        r[bar_series_field] ?? "null"
+      const key = `${getLabel(r[factor_field])}\x00${getSeriesLabel(
+        r[bar_series_field]
       )}`;
       lookup.set(key, getBsVal(r));
     }
@@ -1239,7 +1271,9 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     ? `height:${config.chart_height}px;`
     : `aspect-ratio:2/1;min-height:150px;`;
   const labelHtml = config.title
-    ? `<div style="display:block;margin:0;padding:0 0 4px 0;line-height:normal;text-align:center;font-size:1rem;font-weight:600;color:#6b7280;letter-spacing:0.04em;">${config.title}</div>`
+    ? `<div style="display:block;margin:0;padding:0;line-height:normal;text-align:center;font-size:1rem;font-weight:600;color:#6b7280;letter-spacing:0.04em;">${text_attr(
+        config.title
+      )}</div>`
     : "";
   const chartDiv =
     div({
@@ -1248,7 +1282,7 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     }) +
     script(
       domReady(`
-        var chartDom = document.getElementById('${divid}');
+        var chartDom = document.getElementById(${JSON.stringify(divid)});
         var myChart = echarts.init(chartDom);
         new ResizeObserver(function() { myChart.resize(); }).observe(chartDom);
         ${chartScript}
