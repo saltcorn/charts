@@ -49,17 +49,12 @@ const buildChartScript = (
     pie_donut,
     pie_label_position,
     donut_ring_width,
-    title,
     bar_axis_title,
     statistic,
     outcomes,
     lower_limit,
     upper_limit,
     show_legend,
-    mleft,
-    mright,
-    mtop,
-    mbottom,
     gauge_style,
     gauge_min,
     gauge_max,
@@ -67,19 +62,23 @@ const buildChartScript = (
     heatmap_max,
     heatmap_color_scale,
     factor_field,
+    filter_on_click,
     selected,
     overrides,
     single_override_color,
     single_override_label,
     gauge_override_color,
     gauge_override_label,
+    text_color,
+    fill_color,
+    number_ring_width,
   }
 ) => {
   // Builds an ECharts click handler that calls set_state_field/unset_state_field.
   // getIdExpr is a JS expression (string) that evaluates to the value to store in state;
   // for plain fields it's just 'label', for FK fields it resolves to the raw FK ID.
   const makeClickHandler = (getIdExpr) =>
-    factor_field
+    factor_field && filter_on_click !== false
       ? `myChart.on('click', (params) => {
           const key = ${JSON.stringify(factor_field)};
           const label = params.name;
@@ -94,31 +93,9 @@ const buildChartScript = (
           }
         });`
       : "";
-  const titleHeight = 30;
-  const titleObj = title
-    ? {
-        text: title,
-        ...(mtop != null && { top: mtop }),
-        ...(mleft != null && { left: mleft }),
-      }
-    : null;
-  const titleOption = titleObj ? `title: ${JSON.stringify(titleObj)},` : "";
-  const legendHeight = 50;
-  const legendObj = show_legend
-    ? { ...(mbottom != null && { bottom: mbottom }) }
-    : null;
-  const legendOption = legendObj ? `legend: ${JSON.stringify(legendObj)},` : "";
-  const gridObj = {
-    ...(mleft != null && { left: mleft }),
-    ...(mright != null && { right: mright }),
-    ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-    ...(mbottom != null && {
-      bottom: mbottom + (show_legend ? legendHeight : 0),
-    }),
-  };
-  const gridOption = Object.keys(gridObj).length
-    ? `grid: ${JSON.stringify(gridObj)},`
-    : "";
+  const legendOption = show_legend ? `legend: {},` : "";
+  const gridOption =
+    "grid: { left: 0, right: 0, top: 0, bottom: 0, containLabel: true },";
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
@@ -137,7 +114,7 @@ const buildChartScript = (
         });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
@@ -148,7 +125,7 @@ const buildChartScript = (
       }
       return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
@@ -183,7 +160,7 @@ const buildChartScript = (
         });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
@@ -194,7 +171,7 @@ const buildChartScript = (
       }
       return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
@@ -281,7 +258,7 @@ const buildChartScript = (
       return `
         var option = {
             ${selected != null ? "animation: false," : ""}
-            ${titleOption}
+
             ${gridOption}
           ${
             horizontal
@@ -313,11 +290,12 @@ const buildChartScript = (
           const ov = resolveOverride(item.name, overrides);
           const _n = parseFloat(item.value);
           const value = isFinite(_n) ? +_n.toFixed(2) : item.value;
+          const sliceColor = ov.color || fill_color;
           return {
             ...item,
             value,
             ...(ov.label && { name: ov.label }),
-            ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(sliceColor && { itemStyle: { color: sliceColor } }),
             ...(ov.selected && { selected: true }),
           };
         })
@@ -328,67 +306,16 @@ const buildChartScript = (
           )}%', '70%']`
         : "'70%'";
       const useLegend = pie_label_position === "legend";
-      const useOutside = pie_label_position === "outside";
       const noAnimation = selected != null ? "animation: false," : "";
-      if (useOutside) {
-        return `
-          var option = {
-            ${noAnimation}
-            ${titleOption}
-            series: [{
-              type: 'pie',
-              selectedMode: 'single',
-              selectedOffset: 35,
-              radius: ${radius},
-              label: {
-                backgroundColor: '#F6F8FC',
-                borderColor: '#8C8D8E',
-                borderWidth: 1,
-                borderRadius: 4,
-                formatter: '  {b|{b}}\\n{hr|}\\n  {val|{c}} {per|{d}%} ',
-                rich: {
-                  hr: {
-                    borderColor: '#8C8D8E',
-                    width: '100%',
-                    borderWidth: 1,
-                    height: 0,
-                  },
-                  b: {
-                    color: '#4C5058',
-                    fontSize: 16,
-                    fontWeight: 'bold',
-                    lineHeight: 25,
-                  },
-                  val: {
-                    color: '#4C5058',
-                    fontSize: 16,
-                    lineHeight: 25,
-                  },
-                  per: {
-                    color: '#fff',
-                    fontSize: 14,
-                    backgroundColor: '#4C5058',
-                    borderRadius: 4,
-                    padding: [2, 3],
-                    lineHeight: 25,
-                  },
-                }
-              },
-              labelLine: { length: 30 },
-              data: ${pieData}
-            }]
-          };
-          myChart.setOption(option);
-          ${pieClickHandler}`;
-      }
       const label = useLegend
         ? { position: "inside", formatter: "{c} ({d}%)" }
         : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
+      const legendOpt = useLegend ? "legend: {}," : "";
       return `
         var option = {
             ${noAnimation}
-            ${titleOption}
-          ${useLegend ? "legend: {}," : ""}
+
+          ${legendOpt}
           series: [{
             type: 'pie',
             selectedMode: 'single',
@@ -414,7 +341,7 @@ const buildChartScript = (
         });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
@@ -425,7 +352,7 @@ const buildChartScript = (
       }
       return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
@@ -444,7 +371,7 @@ const buildChartScript = (
       return `
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
-            ${titleOption}
+
             ${gridOption}
           dataset: [
             { source: ${JSON.stringify(data)} },
@@ -465,7 +392,6 @@ const buildChartScript = (
     }
 
     case "funnel": {
-      const legendBottom = mbottom ?? 0;
       const funnelData = data.map((item) => {
         const ov = resolveOverride(item.name, overrides);
         return {
@@ -479,17 +405,17 @@ const buildChartScript = (
         type: "funnel",
         sort: "descending",
         gap: 2,
-        ...(mleft != null && { left: mleft }),
-        ...(mright != null && { right: mright }),
-        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-        bottom: legendBottom + legendHeight,
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
         label: { show: true, position: "inside", formatter: "{d}%" },
         data: funnelData,
       });
       return `
         var option = {
-          ${titleOption}
-          legend: { bottom: ${legendBottom} },
+
+          legend: {},
           tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
           series: [${funnelSeries}]
         };
@@ -506,18 +432,11 @@ const buildChartScript = (
           : 10;
       const hmMin = heatmap_min ?? 0;
       const vmHeight = 60;
-      const vmBottom = mbottom ?? 0;
-      const hmGridObj = {
-        ...(mleft != null && { left: mleft }),
-        ...(mright != null && { right: mright }),
-        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-        ...(mbottom != null && { bottom: mbottom + vmHeight }),
-      };
       return `
         var option = {
-          ${titleOption}
+
           tooltip: { position: 'top' },
-          grid: ${JSON.stringify(hmGridObj)},
+          grid: { left: 0, right: 0, top: 0, bottom: ${vmHeight}, containLabel: true },
           xAxis: { type: 'category', data: ${JSON.stringify(
             xCategories
           )}, splitArea: { show: true } },
@@ -531,7 +450,7 @@ const buildChartScript = (
             calculable: true,
             orient: 'horizontal',
             left: 'center',
-            bottom: '${vmBottom}px',
+            bottom: 0,
             outOfRange: { color: ['#333'] }
           },
           series: [{
@@ -541,6 +460,74 @@ const buildChartScript = (
             emphasis: {
               itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' }
             }
+          }]
+        };
+        myChart.setOption(option);`;
+    }
+
+    case "number": {
+      const numVal = parseFloat(data) || 0;
+      const gaugeMin = gauge_min ?? 0;
+      const gaugeMax = (() => {
+        if (gauge_max != null) return gauge_max;
+        if (!isFinite(numVal) || numVal <= 100) return 100;
+        const magnitude = Math.pow(10, Math.floor(Math.log10(numVal)));
+        return Math.ceil((numVal * 1.05) / magnitude) * magnitude;
+      })();
+      if (gauge_style !== "pointer") {
+        return `
+          var option = {
+
+            series: [{
+              type: 'gauge',
+              min: ${gaugeMin},
+              max: ${gaugeMax},
+              startAngle: 90,
+              endAngle: -270,
+              pointer: { show: false },
+              progress: {
+                show: true,
+                overlap: false,
+                roundCap: true,
+                clip: false,
+                itemStyle: { borderWidth: 1, borderColor: '#464646', ${
+                  fill_color ? `color: ${JSON.stringify(fill_color)}` : ""
+                } }
+              },
+              axisLine: { lineStyle: { width: ${number_ring_width ?? 40} } },
+              splitLine: { show: false },
+              axisTick: { show: false },
+              axisLabel: { show: false },
+              data: [{ value: ${JSON.stringify(numVal)} }],
+              detail: {
+                width: Math.min(30, Math.round(myChart.getWidth() * 0.12)),
+                height: 14, fontSize: 14,
+                color: ${JSON.stringify(text_color || "inherit")},
+                borderColor: ${JSON.stringify(text_color || "inherit")},
+                borderRadius: 20, borderWidth: 1, formatter: '{value}',
+                offsetCenter: ['0%', '0%']
+              }
+            }]
+          };
+          myChart.setOption(option);`;
+      }
+      return `
+        var option = {
+
+          series: [{
+            type: 'gauge',
+            min: ${gaugeMin},
+            max: ${gaugeMax},
+            ${
+              fill_color
+                ? `itemStyle: { color: ${JSON.stringify(fill_color)} },`
+                : ""
+            }
+            detail: {
+              offsetCenter: ['0%', '0%'],
+              ${text_color ? `color: ${JSON.stringify(text_color)},` : ""}
+            },
+            data: [{ value: ${JSON.stringify(numVal)} }]
           }]
         };
         myChart.setOption(option);`;
@@ -568,7 +555,7 @@ const buildChartScript = (
       if (gauge_style !== "pointer") {
         return `
           var option = {
-            ${titleOption}
+
             series: [{
               type: 'gauge',
               min: ${gaugeMin},
@@ -605,7 +592,7 @@ const buildChartScript = (
       }
       return `
         var option = {
-          ${titleOption}
+
           series: [{
             type: 'gauge',
             min: ${gaugeMin},
@@ -735,7 +722,8 @@ const prepChartData = (
     plot_type === "bar" ||
     plot_type === "pie" ||
     plot_type === "funnel" ||
-    plot_type === "gauge"
+    plot_type === "gauge" ||
+    plot_type === "number"
   ) {
     const rows_ =
       plot_type === "gauge" || show_missing
@@ -1206,7 +1194,12 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     }`
   );
   let data;
-  if (useAgg) {
+  if (config.plot_type === "number") {
+    const rawVal = config.number_state_field
+      ? state[config.number_state_field]
+      : undefined;
+    data = parseFloat(rawVal) || 0;
+  } else if (useAgg) {
     data = await loadAggregated(table, fields, where, config);
   } else {
     const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
@@ -1225,20 +1218,45 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
 
   const chartScript = buildChartScript(data, { ...config, selected });
   if (!chartScript) return "";
-
   const divid = `echarts_${viewname}_${Math.random().toString(36).slice(2, 8)}`;
-  const chartHeight = config.chart_height || 400;
-  return (
-    div({ id: divid, style: `width: 100%; height: ${chartHeight}px;` }) +
+  const { mleft, mright, mtop, mbottom } = config;
+  const paddingParts = [
+    mtop != null ? `padding-top:${mtop}px` : "",
+    mright != null ? `padding-right:${mright}px` : "",
+    mbottom != null ? `padding-bottom:${mbottom}px` : "",
+    mleft != null ? `padding-left:${mleft}px` : "",
+  ]
+    .filter(Boolean)
+    .join(";");
+  const textColorScript = config.text_color
+    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(
+        config.text_color
+      )} }, legend: { textStyle: { color: ${JSON.stringify(
+        config.text_color
+      )} } } });`
+    : "";
+  const heightStyle = config.chart_height
+    ? `height:${config.chart_height}px;`
+    : `aspect-ratio:2/1;min-height:150px;`;
+  const labelHtml = config.title
+    ? `<div style="display:block;margin:0;padding:0 0 4px 0;line-height:normal;text-align:center;font-size:1rem;font-weight:600;color:#6b7280;letter-spacing:0.04em;">${config.title}</div>`
+    : "";
+  const chartDiv =
+    div({
+      id: divid,
+      style: `display:block;width:100%;${heightStyle}`,
+    }) +
     script(
       domReady(`
         var chartDom = document.getElementById('${divid}');
         var myChart = echarts.init(chartDom);
         new ResizeObserver(function() { myChart.resize(); }).observe(chartDom);
         ${chartScript}
+        ${textColorScript}
       `)
-    )
-  );
+    );
+  const inner = `<div style="display:inline-block;vertical-align:top;width:100%;">${labelHtml}${chartDiv}</div>`;
+  return paddingParts ? `<div style="${paddingParts}">${inner}</div>` : inner;
 };
 
 module.exports = {

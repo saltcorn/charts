@@ -83,6 +83,7 @@ const buildChartsForm = async (context) => {
             { label: "Funnel chart", name: "funnel" },
             { label: "Gauge chart", name: "gauge" },
             { label: "Heatmap", name: "heatmap" },
+            { label: "Number", name: "number" },
           ],
         },
       },
@@ -265,11 +266,34 @@ const buildChartsForm = async (context) => {
         attributes: { options: ["Count", "Avg", "Sum", "Max", "Min"] },
       },
       {
+        name: "fill_color",
+        label: "Fill color",
+        type: "String",
+        sublabel: "Hex color for the gauge arc or pie slices, e.g. #4e79a7",
+        showIf: { plot_type: ["number", "pie"] },
+      },
+      {
+        name: "number_ring_width",
+        label: "Ring width (px)",
+        type: "Integer",
+        sublabel: "Thickness of the gauge arc. Default: 40.",
+        showIf: { plot_type: "number" },
+        default: 40,
+      },
+      {
+        name: "number_state_field",
+        label: "State field",
+        type: "String",
+        required: true,
+        sublabel: "Name of the state/URL parameter that contains the number to display.",
+        showIf: { plot_type: "number" },
+      },
+      {
         name: "gauge_min",
         label: "Min value",
         type: "Float",
         sublabel: "Leave empty to use 0",
-        showIf: { plot_type: "gauge" },
+        showIf: { plot_type: ["gauge", "number"] },
         attributes: { asideNext: true },
       },
       {
@@ -277,13 +301,13 @@ const buildChartsForm = async (context) => {
         label: "Max value",
         type: "Float",
         sublabel: "Leave empty for automatic",
-        showIf: { plot_type: "gauge" },
+        showIf: { plot_type: ["gauge", "number"] },
       },
       {
         name: "gauge_style",
         label: "Gauge style",
         type: "String",
-        showIf: { plot_type: "gauge" },
+        showIf: { plot_type: ["gauge", "number"] },
         attributes: {
           options: [
             { label: "Arcs", name: "arcs" },
@@ -400,7 +424,6 @@ const buildChartsForm = async (context) => {
         attributes: {
           options: [
             { label: "Inside", name: "inside" },
-            { label: "Outside", name: "outside" },
             { label: "Legend", name: "legend" },
           ],
         },
@@ -522,6 +545,20 @@ const buildChartsForm = async (context) => {
         showIf: { plot_type: "pie" },
         fields: pieOverrideFields,
       }),
+      {
+        name: "filter_on_click",
+        label: "Filter on click",
+        type: "Bool",
+        sublabel: "Clicking a bar, slice, or funnel stage sets a page state filter.",
+        showIf: { plot_type: ["bar", "pie", "funnel"] },
+        default: true,
+      },
+      {
+        name: "text_color",
+        label: "Text color",
+        type: "String",
+        sublabel: "Hex color applied to all chart text (labels, axes, legend). E.g. #333333",
+      },
       { input_type: "section_header", label: "Dimensions" },
       {
         name: "chart_height",
