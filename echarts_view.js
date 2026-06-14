@@ -120,7 +120,9 @@ const buildChartScript = (
           const ov = resolveOverride(s.name, line_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
-          lineLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
+          lineLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
           return {
             type: "line",
             name,
@@ -171,7 +173,9 @@ const buildChartScript = (
           const ov = resolveOverride(s.name, line_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
-          areaLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
+          areaLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
           return {
             type: "line",
             name,
@@ -233,7 +237,9 @@ const buildChartScript = (
           const ov = resolveOverride(s.name, bar_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
-          barLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
+          barLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
           return {
             type: "bar",
             name,
@@ -351,7 +357,11 @@ const buildChartScript = (
       const pieLegendItems = [];
       const pieDataWithLabels = JSON.parse(pieData).map((item) => {
         const { _ovTextColor, ...rest } = item;
-        pieLegendItems.push(_ovTextColor ? { name: rest.name, textStyle: { color: _ovTextColor } } : rest.name);
+        pieLegendItems.push(
+          _ovTextColor
+            ? { name: rest.name, textStyle: { color: _ovTextColor } }
+            : rest.name
+        );
         if (!_ovTextColor) return rest;
         return { ...rest, label: { ...baseLabel, color: _ovTextColor } };
       });
@@ -382,7 +392,9 @@ const buildChartScript = (
           const ov = resolveOverride(s.name, line_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
-          scatterLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
+          scatterLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
           return {
             type: "scatter",
             name,
@@ -445,18 +457,27 @@ const buildChartScript = (
     }
 
     case "funnel": {
-      const funnelBaseLabel = { show: true, position: "inside", formatter: "{d}%", ...(text_color && { color: text_color }) };
+      const funnelBaseLabel = {
+        show: true,
+        position: "inside",
+        formatter: "{d}%",
+        ...(text_color && { color: text_color }),
+      };
       const funnelLegendItems = [];
       const funnelData = data.map((item) => {
         const ov = resolveOverride(item.name, funnel_overrides);
         const itemTextColor = ov.text_color;
         const name = ov.label || item.name;
-        funnelLegendItems.push(itemTextColor ? { name, textStyle: { color: itemTextColor } } : name);
+        funnelLegendItems.push(
+          itemTextColor ? { name, textStyle: { color: itemTextColor } } : name
+        );
         return {
           ...item,
           ...(ov.label && { name }),
           ...(ov.color && { itemStyle: { color: ov.color } }),
-          ...(itemTextColor && { label: { ...funnelBaseLabel, color: itemTextColor } }),
+          ...(itemTextColor && {
+            label: { ...funnelBaseLabel, color: itemTextColor },
+          }),
         };
       });
       const funnelSeries = JSON.stringify({
@@ -642,8 +663,8 @@ const buildChartScript = (
                 width: 50,
                 height: 14,
                 fontSize: 14,
-                color: ${JSON.stringify(text_color || 'inherit')},
-                borderColor: ${JSON.stringify(text_color || 'inherit')},
+                color: ${JSON.stringify(text_color || "inherit")},
+                borderColor: ${JSON.stringify(text_color || "inherit")},
                 borderRadius: 20,
                 borderWidth: 1,
                 formatter: '{value}'
@@ -679,7 +700,7 @@ const buildChartScript = (
               width: 40,
               height: 14,
               fontSize: 14,
-              color: ${JSON.stringify(text_color || '#fff')},
+              color: ${JSON.stringify(text_color || "#fff")},
               backgroundColor: 'inherit',
               borderRadius: 3,
               formatter: '{value}'
@@ -1322,13 +1343,35 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     : "";
   const chartHasLegend = (() => {
     const pt = config.plot_type;
-    if (pt === "pie") return config.pie_label_position === "legend" || config.pie_label_position === "outside";
+    if (pt === "pie")
+      return (
+        config.pie_label_position === "legend" ||
+        config.pie_label_position === "outside"
+      );
     if (pt === "funnel") return true;
-    if (pt === "histogram" || pt === "gauge" || pt === "heatmap" || pt === "number") return false;
-    return config.show_legend === true || config.show_legend === "true" || config.show_legend === 1;
+    if (
+      pt === "histogram" ||
+      pt === "gauge" ||
+      pt === "heatmap" ||
+      pt === "number"
+    )
+      return false;
+    return (
+      config.show_legend === true ||
+      config.show_legend === "true" ||
+      config.show_legend === 1
+    );
   })();
   const textColorScript = config.text_color
-    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(config.text_color)} }${chartHasLegend ? `, legend: { textStyle: { color: ${JSON.stringify(config.text_color)} } }` : ""} });`
+    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(
+        config.text_color
+      )} }${
+        chartHasLegend
+          ? `, legend: { textStyle: { color: ${JSON.stringify(
+              config.text_color
+            )} } }`
+          : ""
+      } });`
     : "";
   const chartDiv =
     div({

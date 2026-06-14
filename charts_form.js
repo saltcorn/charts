@@ -44,7 +44,6 @@ const barOverrideFields = [
   ...overrideFields.slice(1),
 ];
 
-
 const buildChartsForm = async (context) => {
   const table = await Table.findOne({ id: context.table_id });
   const fields = await table.getFields();
