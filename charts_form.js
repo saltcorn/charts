@@ -21,6 +21,12 @@ const overrideFields = [
     attributes: { asideNext: true },
   },
   {
+    name: "text_color",
+    label: "Text color",
+    type: "String",
+    sublabel: "Label color for this series, overrides global text color",
+  },
+  {
     name: "label",
     label: "Label",
     type: "String",
@@ -38,15 +44,6 @@ const barOverrideFields = [
   ...overrideFields.slice(1),
 ];
 
-const pieOverrideFields = [
-  ...overrideFields,
-  {
-    name: "selected",
-    label: "Explode slice",
-    type: "Bool",
-    sublabel: "Pull this slice out for emphasis",
-  },
-];
 
 const buildChartsForm = async (context) => {
   const table = await Table.findOne({ id: context.table_id });
@@ -267,13 +264,6 @@ const buildChartsForm = async (context) => {
         attributes: { options: ["Count", "Avg", "Sum", "Max", "Min"] },
       },
       {
-        name: "fill_color",
-        label: "Fill color",
-        type: "String",
-        sublabel: "Hex color for the gauge arc, e.g. #4e79a7",
-        showIf: { plot_type: ["number", "gauge"] },
-      },
-      {
         name: "number_ring_width",
         label: "Ring width (px)",
         type: "Integer",
@@ -481,16 +471,7 @@ const buildChartsForm = async (context) => {
         name: "show_legend",
         label: "Show legend",
         type: "Bool",
-        showIf: {
-          plot_type: ["line", "area", "scatter"],
-          plot_series: ["multiple", "group_by_field"],
-        },
-      },
-      {
-        name: "show_legend",
-        label: "Show legend",
-        type: "Bool",
-        showIf: { plot_type: "bar" },
+        showIf: { plot_type: ["bar", "line", "area", "scatter"] },
       },
       { input_type: "section_header", label: "Overrides" },
       {
@@ -536,6 +517,13 @@ const buildChartsForm = async (context) => {
         fields: overrideFields,
       }),
       {
+        name: "fill_color",
+        label: "Fill color",
+        type: "String",
+        sublabel: "Hex color for the gauge arc, e.g. #4e79a7",
+        showIf: { plot_type: "number" },
+      },
+      {
         name: "gauge_override_color",
         label: "Color",
         type: "String",
@@ -554,14 +542,14 @@ const buildChartsForm = async (context) => {
         name: "pie_overrides",
         label: "Override",
         showIf: { plot_type: "pie" },
-        fields: pieOverrideFields,
+        fields: overrideFields,
       }),
       {
         name: "text_color",
         label: "Text color",
         type: "String",
         sublabel:
-          "Hex color applied to all chart text (labels, axes, legend). E.g. #333333",
+          "Default label color for data labels (e.g. slice labels on pie). Can be overridden per series in the Overrides section. E.g. #333333",
       },
       { input_type: "section_header", label: "Dimensions" },
       {

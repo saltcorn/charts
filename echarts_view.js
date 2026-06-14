@@ -32,6 +32,7 @@ const resolveOverride = (name, overrides) => {
       (acc, o) => ({
         ...acc,
         ...(o.color ? { color: o.color } : {}),
+        ...(o.text_color ? { text_color: o.text_color } : {}),
         ...(o.label ? { label: o.label } : {}),
       }),
       {}
@@ -96,23 +97,39 @@ const buildChartScript = (
           }
         });`
       : "";
-  const legendOption = show_legend ? `legend: { bottom: 0 },` : "";
+  const hasLegend =
+    (show_legend === true || show_legend === "true" || show_legend === 1) &&
+    plot_type !== "histogram";
+  const legendOption = hasLegend
+    ? `legend: { bottom: 0 },`
+    : `legend: { show: false },`;
+  // Builds a legend option string with optional per-item textStyle.color.
+  // items: array of series names (strings) or { name, textStyle } objects.
+  const buildLegendOpt = (items) =>
+    hasLegend
+      ? `legend: { bottom: 0, data: ${JSON.stringify(items)} },`
+      : `legend: { show: false },`;
   const gridOption = `grid: { left: 0, right: 0, top: 0, bottom: ${
-    show_legend ? 50 : 0
+    hasLegend ? 50 : 0
   }, containLabel: true },`;
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
+        const lineLegendItems = [];
         const seriesArr = data.map((s) => {
           const ov = resolveOverride(s.name, line_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          lineLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
           return {
             type: "line",
-            name: ov.label || s.name,
+            name,
             smooth: !!smooth,
             ...(ov.color && {
               itemStyle: { color: ov.color },
               lineStyle: { color: ov.color },
             }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
             data: s.points,
           };
         });
@@ -122,7 +139,7 @@ const buildChartScript = (
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(lineLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
@@ -131,6 +148,7 @@ const buildChartScript = (
         var option = {
 
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [${JSON.stringify({
@@ -148,17 +166,22 @@ const buildChartScript = (
 
     case "area":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
+        const areaLegendItems = [];
         const seriesArr = data.map((s) => {
           const ov = resolveOverride(s.name, line_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          areaLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
           return {
             type: "line",
-            name: ov.label || s.name,
+            name,
             smooth: !!smooth,
             areaStyle: ov.color ? { color: ov.color } : {},
             ...(ov.color && {
               itemStyle: { color: ov.color },
               lineStyle: { color: ov.color },
             }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
             data: s.points,
           };
         });
@@ -168,7 +191,7 @@ const buildChartScript = (
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(areaLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
@@ -177,6 +200,7 @@ const buildChartScript = (
         var option = {
 
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [${JSON.stringify({
@@ -203,14 +227,19 @@ const buildChartScript = (
           : "label"
       );
       const horizontal = bar_orientation === "horizontal";
+      const barLegendItems = [];
       const seriesArr = JSON.stringify(
         barSeries.map((s) => {
           const ov = resolveOverride(s.name, bar_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          barLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
           return {
             type: "bar",
-            name: ov.label || s.name,
+            name,
             stack: bar_stack ? "total" : undefined,
             ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
             data: selected
               ? s.values.map((v, i) => ({
                   value: v,
@@ -269,7 +298,7 @@ const buildChartScript = (
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
               : `xAxis: ${categoryAxis}, yAxis: ${valueAxis}`
           },
-          ${legendOption}
+          ${buildLegendOpt(barLegendItems)}
           series: ${seriesArr}
         };
         myChart.setOption(option);
@@ -300,6 +329,7 @@ const buildChartScript = (
             ...(ov.label && { name: ov.label }),
             ...(ov.color && { itemStyle: { color: ov.color } }),
             ...(ov.selected && { selected: true }),
+            _ovTextColor: ov.text_color || null,
           };
         })
       );
@@ -312,12 +342,22 @@ const buildChartScript = (
         pie_label_position === "outside" ? "legend" : pie_label_position;
       const useLegend = effectiveLabelPos === "legend";
       const noAnimation = selected != null ? "animation: false," : "";
-      const label = {
+      const baseLabel = {
         position: "inside",
         formatter: useLegend ? "{c} ({d}%)" : "{b}\n{c} ({d}%)",
         ...(text_color && { color: text_color }),
       };
-      const legendOpt = useLegend ? "legend: {}," : "";
+      const label = baseLabel;
+      const pieLegendItems = [];
+      const pieDataWithLabels = JSON.parse(pieData).map((item) => {
+        const { _ovTextColor, ...rest } = item;
+        pieLegendItems.push(_ovTextColor ? { name: rest.name, textStyle: { color: _ovTextColor } } : rest.name);
+        if (!_ovTextColor) return rest;
+        return { ...rest, label: { ...baseLabel, color: _ovTextColor } };
+      });
+      const legendOpt = useLegend
+        ? `legend: { bottom: 0, data: ${JSON.stringify(pieLegendItems)} },`
+        : "legend: { show: false },";
       return `
         var option = {
             ${noAnimation}
@@ -328,7 +368,7 @@ const buildChartScript = (
             selectedMode: 'single',
             radius: ${radius},
             label: ${JSON.stringify(label)},
-            data: ${pieData}
+            data: ${JSON.stringify(pieDataWithLabels)}
           }]
         };
         myChart.setOption(option);
@@ -337,12 +377,17 @@ const buildChartScript = (
 
     case "scatter":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
+        const scatterLegendItems = [];
         const seriesArr = data.map((s) => {
           const ov = resolveOverride(s.name, line_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          scatterLegendItems.push(ov.text_color ? { name, textStyle: { color: ov.text_color } } : name);
           return {
             type: "scatter",
-            name: ov.label || s.name,
+            name,
             ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
             data: s.points,
           };
         });
@@ -352,7 +397,7 @@ const buildChartScript = (
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(scatterLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
@@ -361,6 +406,7 @@ const buildChartScript = (
         var option = {
 
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
           series: [${JSON.stringify({
@@ -378,8 +424,8 @@ const buildChartScript = (
       return `
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
-
             ${gridOption}
+            legend: { show: false },
           dataset: [
             { source: ${JSON.stringify(data)} },
             { transform: { type: 'ecStat:histogram', config: {} } }
@@ -399,12 +445,18 @@ const buildChartScript = (
     }
 
     case "funnel": {
+      const funnelBaseLabel = { show: true, position: "inside", formatter: "{d}%", ...(text_color && { color: text_color }) };
+      const funnelLegendItems = [];
       const funnelData = data.map((item) => {
         const ov = resolveOverride(item.name, funnel_overrides);
+        const itemTextColor = ov.text_color;
+        const name = ov.label || item.name;
+        funnelLegendItems.push(itemTextColor ? { name, textStyle: { color: itemTextColor } } : name);
         return {
           ...item,
-          ...(ov.label && { name: ov.label }),
+          ...(ov.label && { name }),
           ...(ov.color && { itemStyle: { color: ov.color } }),
+          ...(itemTextColor && { label: { ...funnelBaseLabel, color: itemTextColor } }),
         };
       });
       const funnelSeries = JSON.stringify({
@@ -416,13 +468,13 @@ const buildChartScript = (
         right: 0,
         top: 0,
         bottom: 50,
-        label: { show: true, position: "inside", formatter: "{d}%" },
+        label: funnelBaseLabel,
         data: funnelData,
       });
       return `
         var option = {
 
-          legend: { bottom: 0 },
+          legend: { bottom: 0, data: ${JSON.stringify(funnelLegendItems)} },
           tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
           series: [${funnelSeries}]
         };
@@ -590,8 +642,8 @@ const buildChartScript = (
                 width: 50,
                 height: 14,
                 fontSize: 14,
-                color: 'inherit',
-                borderColor: 'inherit',
+                color: ${JSON.stringify(text_color || 'inherit')},
+                borderColor: ${JSON.stringify(text_color || 'inherit')},
                 borderRadius: 20,
                 borderWidth: 1,
                 formatter: '{value}'
@@ -627,7 +679,7 @@ const buildChartScript = (
               width: 40,
               height: 14,
               fontSize: 14,
-              color: '#fff',
+              color: ${JSON.stringify(text_color || '#fff')},
               backgroundColor: 'inherit',
               borderRadius: 3,
               formatter: '{value}'
@@ -1260,13 +1312,6 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
   ]
     .filter(Boolean)
     .join(";");
-  const textColorScript = config.text_color
-    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(
-        config.text_color
-      )} }, legend: { textStyle: { color: ${JSON.stringify(
-        config.text_color
-      )} } } });`
-    : "";
   const heightStyle = config.chart_height
     ? `height:${config.chart_height}px;`
     : `aspect-ratio:2/1;min-height:150px;`;
@@ -1274,6 +1319,16 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     ? `<div style="display:block;margin:0;padding:0;line-height:normal;text-align:center;font-size:1rem;font-weight:600;color:#6b7280;letter-spacing:0.04em;">${text_attr(
         config.title
       )}</div>`
+    : "";
+  const chartHasLegend = (() => {
+    const pt = config.plot_type;
+    if (pt === "pie") return config.pie_label_position === "legend" || config.pie_label_position === "outside";
+    if (pt === "funnel") return true;
+    if (pt === "histogram" || pt === "gauge" || pt === "heatmap" || pt === "number") return false;
+    return config.show_legend === true || config.show_legend === "true" || config.show_legend === 1;
+  })();
+  const textColorScript = config.text_color
+    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(config.text_color)} }${chartHasLegend ? `, legend: { textStyle: { color: ${JSON.stringify(config.text_color)} } }` : ""} });`
     : "";
   const chartDiv =
     div({
