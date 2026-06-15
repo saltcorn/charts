@@ -65,7 +65,7 @@ const buildChartScript = (
     factor_field,
     filter_on_click,
     selected,
-    line_overrides,
+    line_area_scatter_overrides,
     bar_overrides,
     funnel_overrides,
     pie_overrides,
@@ -74,7 +74,7 @@ const buildChartScript = (
     gauge_override_color,
     gauge_override_label,
     text_color,
-    fill_color,
+    number_arc_color,
     number_ring_width,
   }
 ) => {
@@ -117,7 +117,7 @@ const buildChartScript = (
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const lineLegendItems = [];
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, line_overrides);
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
           lineLegendItems.push(
@@ -170,7 +170,7 @@ const buildChartScript = (
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const areaLegendItems = [];
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, line_overrides);
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
           areaLegendItems.push(
@@ -389,7 +389,7 @@ const buildChartScript = (
       if (plot_series === "multiple" || plot_series === "group_by_field") {
         const scatterLegendItems = [];
         const seriesArr = data.map((s) => {
-          const ov = resolveOverride(s.name, line_overrides);
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
           const seriesTextColor = ov.text_color || text_color;
           const name = ov.label || s.name;
           scatterLegendItems.push(
@@ -571,7 +571,7 @@ const buildChartScript = (
                 roundCap: true,
                 clip: false,
                 itemStyle: { borderWidth: 1, borderColor: '#464646', ${
-                  fill_color ? `color: ${JSON.stringify(fill_color)}` : ""
+                  number_arc_color ? `color: ${JSON.stringify(number_arc_color)}` : ""
                 } }
               },
               axisLine: { lineStyle: { width: ${
@@ -601,8 +601,8 @@ const buildChartScript = (
             min: ${gaugeMin},
             max: ${gaugeMax},
             ${
-              fill_color
-                ? `itemStyle: { color: ${JSON.stringify(fill_color)} },`
+              number_arc_color
+                ? `itemStyle: { color: ${JSON.stringify(number_arc_color)} },`
                 : ""
             }
             detail: {

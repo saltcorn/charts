@@ -495,7 +495,7 @@ const buildChartsForm = async (context) => {
         },
       },
       new FieldRepeat({
-        name: "line_overrides",
+        name: "line_area_scatter_overrides",
         label: "Override",
         showIf: {
           plot_type: ["line", "area", "scatter"],
@@ -516,7 +516,7 @@ const buildChartsForm = async (context) => {
         fields: overrideFields,
       }),
       {
-        name: "fill_color",
+        name: "number_arc_color",
         label: "Fill color",
         type: "String",
         sublabel: "Hex color for the gauge arc, e.g. #4e79a7",

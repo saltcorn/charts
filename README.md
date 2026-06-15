@@ -102,7 +102,7 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Min / Max value** | Value range for the progress ring. |
 | **Style** | Arcs (progress ring) or Pointer (needle gauge). |
 | **Ring width (px)** | Thickness of the progress ring. Default: 40. |
-| **Fill color** | Hex color for the ring arc, e.g. `#4e79a7`. |
+| **Arc color** | Hex color for the progress ring, e.g. `#4e79a7`. |
 
 ### Heatmap
 
