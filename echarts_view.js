@@ -26,17 +26,13 @@ const get_state_fields = async (table_id, viewname, config) => {
 
 const resolveOverride = (name, overrides) => {
   if (!overrides?.length || name == null) return {};
-  return overrides
-    .filter((o) => o.series_name === String(name))
-    .reduce(
-      (acc, o) => ({
-        ...acc,
-        ...(o.color ? { color: o.color } : {}),
-        ...(o.text_color ? { text_color: o.text_color } : {}),
-        ...(o.label ? { label: o.label } : {}),
-      }),
-      {}
-    );
+  const o = overrides.find((o) => o.series_name === String(name));
+  if (!o) return {};
+  return {
+    ...(o.color ? { color: o.color } : {}),
+    ...(o.text_color ? { text_color: o.text_color } : {}),
+    ...(o.label ? { label: o.label } : {}),
+  };
 };
 
 const buildChartScript = (
@@ -75,6 +71,7 @@ const buildChartScript = (
     gauge_override_label,
     text_color,
     number_arc_color,
+    number_override_label,
     number_ring_width,
   }
 ) => {
@@ -334,7 +331,6 @@ const buildChartScript = (
             value,
             ...(ov.label && { name: ov.label }),
             ...(ov.color && { itemStyle: { color: ov.color } }),
-            ...(ov.selected && { selected: true }),
             _ovTextColor: ov.text_color || null,
           };
         })
@@ -413,8 +409,8 @@ const buildChartScript = (
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
-      }
-      return `
+      } else
+        return `
         var option = {
 
             ${gridOption}
@@ -570,9 +566,7 @@ const buildChartScript = (
                 overlap: false,
                 roundCap: true,
                 clip: false,
-                itemStyle: { borderWidth: 1, borderColor: '#464646', ${
-                  number_arc_color ? `color: ${JSON.stringify(number_arc_color)}` : ""
-                } }
+                itemStyle: { borderWidth: 1, borderColor: '#464646' }
               },
               axisLine: { lineStyle: { width: ${
                 parseInt(number_ring_width, 10) || 40
@@ -580,7 +574,16 @@ const buildChartScript = (
               splitLine: { show: false },
               axisTick: { show: false },
               axisLabel: { show: false },
-              data: [{ value: ${JSON.stringify(numVal)} }],
+              data: [{ value: ${JSON.stringify(numVal)}${
+          number_arc_color
+            ? `, itemStyle: { color: ${JSON.stringify(number_arc_color)} }`
+            : ""
+        }${
+          number_override_label
+            ? `, name: ${JSON.stringify(number_override_label)}`
+            : ""
+        } }],
+              title: { fontSize: 14 },
               detail: {
                 width: Math.min(30, Math.round(myChart.getWidth() * 0.12)),
                 height: 14, fontSize: 14,
@@ -600,17 +603,39 @@ const buildChartScript = (
             type: 'gauge',
             min: ${gaugeMin},
             max: ${gaugeMax},
-            ${
-              number_arc_color
-                ? `itemStyle: { color: ${JSON.stringify(number_arc_color)} },`
-                : ""
-            }
-            detail: {
-              width: Math.min(30, Math.round(myChart.getWidth() * 0.12)),
-              offsetCenter: ['0%', '0%'],
-              ${text_color ? `color: ${JSON.stringify(text_color)},` : ""}
+            anchor: {
+              show: true,
+              showAbove: true,
+              size: 18,
+              itemStyle: { color: '#FAC858' }
             },
-            data: [{ value: ${JSON.stringify(numVal)} }]
+            pointer: {
+              icon: 'path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v115c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z',
+              width: 8,
+              length: '80%',
+              offsetCenter: [0, '8%']
+            },
+            progress: { show: true, overlap: true, roundCap: true },
+            axisLine: { roundCap: true },
+            data: [{ value: ${JSON.stringify(numVal)}${
+        number_arc_color
+          ? `, itemStyle: { color: ${JSON.stringify(number_arc_color)} }`
+          : ""
+      }${
+        number_override_label
+          ? `, name: ${JSON.stringify(number_override_label)}`
+          : ""
+      } }],
+            title: { fontSize: 14 },
+            detail: {
+              width: 40,
+              height: 14,
+              fontSize: 14,
+              color: ${JSON.stringify(text_color || "#fff")},
+              backgroundColor: 'inherit',
+              borderRadius: 3,
+              formatter: '{value}'
+            }
           }]
         };
         myChart.setOption(option);`;
@@ -1015,8 +1040,8 @@ const loadAggregated = async (
     }
     return String(applyNL(fkId));
   };
-  let seriesLabelMap = null;
-  if (bar_series_field) {
+  if (plot_type === "bar" && bar_series_field) {
+    let seriesLabelMap = null;
     const series_field_obj = fields.find((f) => f.name === bar_series_field);
     if (
       series_field_obj?.is_fkey &&
@@ -1029,16 +1054,14 @@ const loadAggregated = async (
       const labelRows = refTable ? await refTable.getRows({}) : [];
       seriesLabelMap = new Map(labelRows.map((r) => [r.id, r[summaryField]]));
     }
-  }
-  const getSeriesLabel = (val) => {
-    if (seriesLabelMap) {
-      if (isMiss(val)) return "null";
-      const label = seriesLabelMap.get(val);
-      return label != null ? String(label) : String(val);
-    }
-    return String(val ?? "null");
-  };
-  if (plot_type === "bar" && bar_series_field) {
+    const getSeriesLabel = (val) => {
+      if (seriesLabelMap) {
+        if (isMiss(val)) return "null";
+        const label = seriesLabelMap.get(val);
+        return label != null ? String(label) : String(val);
+      }
+      return String(val ?? "null");
+    };
     const of_ = outcomes?.[0]?.outcome_field;
     const aggKey = isCount(of_) ? "__count" : of_;
     const bsAggRows = await table.aggregationQuery(

@@ -517,9 +517,17 @@ const buildChartsForm = async (context) => {
       }),
       {
         name: "number_arc_color",
-        label: "Fill color",
+        label: "Color",
         type: "String",
-        sublabel: "Hex color for the gauge arc, e.g. #4e79a7",
+        sublabel: "Hex color, e.g. #22ee55",
+        showIf: { plot_type: "number" },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "number_override_label",
+        label: "Label",
+        type: "String",
+        sublabel: "Display name shown with the value",
         showIf: { plot_type: "number" },
       },
       {
