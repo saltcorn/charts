@@ -1420,4 +1420,20 @@ module.exports = {
   get_state_fields,
   configuration_workflow,
   run,
+  enable_copilot_viewgen: true,
+  description:
+    "Renders an interactive chart from a table — bar, pie, line, area, scatter, " +
+    "histogram, funnel, gauge, heatmap, or number. Use for any charting or data " +
+    "visualisation requirement.",
+  copilot_generate_view_prompt:
+    "Set plot_type to the appropriate chart type. " +
+    "For category charts (bar/pie/funnel): set factor_field (the grouping field) and " +
+    "outcome_field (the numeric value field, or 'Row count'), and statistic " +
+    "('count'/'sum'/'avg'/'max'/'min'). " +
+    "For x/y charts (line/area/scatter): set x_field and y_field. " +
+    "For histogram: set histogram_field. " +
+    "For gauge: set outcome_field (and optionally gauge_min/gauge_max). " +
+    "For heatmap: set heatmap_x_field, heatmap_y_field, heatmap_value_field. " +
+    "Optionally set title, chart_height, include_fml (filter formula), show_legend, " +
+    "and filter_on_click: true to enable interactive click-filtering when factor_field is set.",
 };
