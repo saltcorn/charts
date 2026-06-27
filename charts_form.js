@@ -80,7 +80,6 @@ const buildChartsForm = async (context) => {
             { label: "Funnel chart", name: "funnel" },
             { label: "Gauge chart", name: "gauge" },
             { label: "Heatmap", name: "heatmap" },
-            { label: "Number", name: "number" },
           ],
         },
       },
@@ -267,7 +266,7 @@ const buildChartsForm = async (context) => {
         label: "Ring width (px)",
         type: "Integer",
         sublabel: "Thickness of the gauge arc. Default: 40.",
-        showIf: { plot_type: "number" },
+        showIf: { plot_type: "gauge", gauge_type: "from_state" },
         default: 40,
       },
       {
@@ -277,14 +276,14 @@ const buildChartsForm = async (context) => {
         required: true,
         sublabel:
           "Name of the state/URL parameter that contains the number to display.",
-        showIf: { plot_type: "number" },
+        showIf: { plot_type: "gauge", gauge_type: "from_state" },
       },
       {
         name: "gauge_min",
         label: "Min value",
         type: "Float",
         sublabel: "Leave empty to use 0",
-        showIf: { plot_type: ["gauge", "number"] },
+        showIf: { plot_type: "gauge" },
         attributes: { asideNext: true },
       },
       {
@@ -292,13 +291,13 @@ const buildChartsForm = async (context) => {
         label: "Max value",
         type: "Float",
         sublabel: "Leave empty for automatic",
-        showIf: { plot_type: ["gauge", "number"] },
+        showIf: { plot_type: "gauge" },
       },
       {
         name: "gauge_style",
         label: "Style",
         type: "String",
-        showIf: { plot_type: ["gauge", "number"] },
+        showIf: { plot_type: "gauge" },
         attributes: {
           options: [
             { label: "Arcs", name: "arcs" },
@@ -316,6 +315,7 @@ const buildChartsForm = async (context) => {
             { label: "Single", name: "single" },
             { label: "Multiple", name: "multiple" },
             { label: "Group by field", name: "group_by_field" },
+            { label: "From state field", name: "from_state" },
           ],
         },
       },
@@ -331,7 +331,7 @@ const buildChartsForm = async (context) => {
         name: "gauge_name",
         label: "Gauge label",
         type: "String",
-        showIf: { plot_type: "gauge", gauge_type: "single" },
+        showIf: { plot_type: "gauge", gauge_type: ["single", "from_state"] },
       },
       new FieldRepeat({
         name: "gauge_series",
@@ -515,21 +515,6 @@ const buildChartsForm = async (context) => {
         showIf: { plot_type: "funnel" },
         fields: overrideFields,
       }),
-      {
-        name: "number_arc_color",
-        label: "Color",
-        type: "String",
-        sublabel: "Hex color, e.g. #22ee55",
-        showIf: { plot_type: "number" },
-        attributes: { asideNext: true },
-      },
-      {
-        name: "number_override_label",
-        label: "Label",
-        type: "String",
-        sublabel: "Display name shown with the value",
-        showIf: { plot_type: "number" },
-      },
       {
         name: "gauge_override_color",
         label: "Color",

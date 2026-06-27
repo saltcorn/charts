@@ -13,9 +13,8 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Pie** | Pie or donut chart. Label position: inside or legend. |
 | **Histogram** | Histogram using ECharts statistical transforms. |
 | **Funnel** | Funnel chart with descending sort and percentage labels. |
-| **Gauge** | Gauge chart in arc or pointer style. Supports single value, multiple named values, or group-by-field. |
+| **Gauge** | Gauge chart in arc or pointer style. Supports single value, multiple named values, group-by-field, or a value read directly from a URL/state parameter. |
 | **Heatmap** | 2D heatmap with a continuous or stepped color scale. |
-| **Number** | Single numeric value displayed as a progress ring (arc) or simple gauge needle. |
 
 ## Configuration options
 
@@ -85,24 +84,15 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 | Option | Description |
 |--------|-------------|
-| **Outcome field** | Numeric field (or "Row count") to aggregate. |
-| **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
+| **Gauge type** | How the value is sourced: **Single** (aggregate one field), **Multiple** (several named fields), **Group by field** (one gauge per group), or **From state field** (value from a URL/state parameter — no table aggregation). |
+| **Outcome field** | Numeric field (or "Row count") to aggregate. Not used for "From state field". |
+| **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. Not used for "From state field". |
 | **Min / Max value** | Value range for the gauge arc. Max defaults to automatic. |
 | **Style** | Arcs (concentric progress rings) or Pointer (classic needle). |
-| **Gauge type** | Single value, multiple named values (FieldRepeat), or group-by-field. |
 | **Group field** | Field whose distinct values each get their own gauge (group-by mode). |
-| **Gauge label** | Display name for the single-value gauge. |
-
-### Number
-
-| Option | Description |
-|--------|-------------|
-| **Outcome field** | Numeric field (or "Row count") to aggregate. |
-| **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
-| **Min / Max value** | Value range for the progress ring. |
-| **Style** | Arcs (progress ring) or Pointer (needle gauge). |
-| **Ring width (px)** | Thickness of the progress ring. Default: 40. |
-| **Arc color** | Hex color for the progress ring, e.g. `#4e79a7`. |
+| **Gauge label** | Display name for single-value and from-state gauges. |
+| **State field** | Name of the URL/state parameter whose numeric value to display (from-state mode only). |
+| **Ring width (px)** | Thickness of the arc ring in pixels. Default: 40. (from-state mode only). |
 
 ### Heatmap
 
@@ -117,7 +107,7 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 ## Overrides
 
-Each chart type (except Number, Histogram, and Heatmap) has an **Overrides** section that lets you customize individual series or data items by name.
+Each chart type (except Histogram and Heatmap) has an **Overrides** section that lets you customize individual series or data items by name.
 
 | Field | Applies to | Description |
 |-------|-----------|-------------|
@@ -147,7 +137,7 @@ Fields that reference another table via a foreign key are resolved to their summ
 ## Technical notes
 
 - Charts are rendered client-side using the bundled `echarts.min.js` and `ecStat.min.js` in `public/`.
-- When the underlying table supports `aggregationQuery` (normal tables, not external), bar/pie/funnel/gauge/number use it for efficient DB-level aggregation. Other plot types always use `getJoinedRows`.
+- When the underlying table supports `aggregationQuery` (normal tables, not external), bar/pie/funnel/gauge use it for efficient DB-level aggregation. Gauge with `gauge_type: "from_state"` skips aggregation entirely and reads the value directly from page state. Other plot types always use `getJoinedRows`.
 - Zero values in heatmap cells are displayed as `"-"` and rendered in dark gray (via ECharts `outOfRange`) so they do not skew the color scale.
 - The plot title is rendered as an HTML element above the chart (not via ECharts) so it never takes up chart canvas space.
 - Legend is positioned at the bottom of the chart; when shown, the chart grid reserves 50 px of space to prevent overlap.

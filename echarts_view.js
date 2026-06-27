@@ -70,8 +70,6 @@ const buildChartScript = (
     gauge_override_color,
     gauge_override_label,
     text_color,
-    number_arc_color,
-    number_override_label,
     number_ring_width,
   }
 ) => {
@@ -541,106 +539,6 @@ const buildChartScript = (
         myChart.setOption(option);`;
     }
 
-    case "number": {
-      const numVal = parseFloat(data) || 0;
-      const gaugeMin = gauge_min ?? 0;
-      const gaugeMax = (() => {
-        if (gauge_max != null) return gauge_max;
-        if (!isFinite(numVal) || numVal <= 100) return 100;
-        const magnitude = Math.pow(10, Math.floor(Math.log10(numVal)));
-        return Math.ceil((numVal * 1.05) / magnitude) * magnitude;
-      })();
-      if (gauge_style !== "pointer") {
-        return `
-          var option = {
-
-            series: [{
-              type: 'gauge',
-              min: ${gaugeMin},
-              max: ${gaugeMax},
-              startAngle: 90,
-              endAngle: -270,
-              pointer: { show: false },
-              progress: {
-                show: true,
-                overlap: false,
-                roundCap: true,
-                clip: false,
-                itemStyle: { borderWidth: 1, borderColor: '#464646' }
-              },
-              axisLine: { lineStyle: { width: ${
-                parseInt(number_ring_width, 10) || 40
-              } } },
-              splitLine: { show: false },
-              axisTick: { show: false },
-              axisLabel: { show: false },
-              data: [{ value: ${JSON.stringify(numVal)}${
-          number_arc_color
-            ? `, itemStyle: { color: ${JSON.stringify(number_arc_color)} }`
-            : ""
-        }${
-          number_override_label
-            ? `, name: ${JSON.stringify(number_override_label)}`
-            : ""
-        } }],
-              title: { fontSize: 14 },
-              detail: {
-                width: Math.min(30, Math.round(myChart.getWidth() * 0.12)),
-                height: 14, fontSize: 14,
-                color: ${JSON.stringify(text_color || "inherit")},
-                borderColor: ${JSON.stringify(text_color || "inherit")},
-                borderRadius: 20, borderWidth: 1, formatter: '{value}',
-                offsetCenter: ['0%', '0%']
-              }
-            }]
-          };
-          myChart.setOption(option);`;
-      }
-      return `
-        var option = {
-
-          series: [{
-            type: 'gauge',
-            min: ${gaugeMin},
-            max: ${gaugeMax},
-            anchor: {
-              show: true,
-              showAbove: true,
-              size: 18,
-              itemStyle: { color: '#FAC858' }
-            },
-            pointer: {
-              icon: 'path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v115c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z',
-              width: 8,
-              length: '80%',
-              offsetCenter: [0, '8%']
-            },
-            progress: { show: true, overlap: true, roundCap: true },
-            axisLine: { roundCap: true },
-            data: [{ value: ${JSON.stringify(numVal)}${
-        number_arc_color
-          ? `, itemStyle: { color: ${JSON.stringify(number_arc_color)} }`
-          : ""
-      }${
-        number_override_label
-          ? `, name: ${JSON.stringify(number_override_label)}`
-          : ""
-      } }],
-            title: { fontSize: 14 },
-            detail: {
-              width: 40,
-              height: 14,
-              fontSize: 14,
-              color: ${JSON.stringify(text_color || "#fff")},
-              backgroundColor: 'inherit',
-              borderRadius: 3,
-              formatter: '{value}'
-            }
-          }]
-        };
-        myChart.setOption(option);`;
-    }
-
     case "gauge": {
       const gaugeData =
         gauge_override_color || gauge_override_label
@@ -678,7 +576,7 @@ const buildChartScript = (
                 clip: false,
                 itemStyle: { borderWidth: 1, borderColor: '#464646' }
               },
-              axisLine: { lineStyle: { width: 40 } },
+              axisLine: { lineStyle: { width: ${parseInt(number_ring_width, 10) || 40} } },
               splitLine: { show: false, distance: 0, length: 10 },
               axisTick: { show: false },
               axisLabel: { show: false, distance: 50 },
@@ -1322,11 +1220,20 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     }`
   );
   let data;
-  if (config.plot_type === "number") {
+  if (config.plot_type === "gauge" && config.gauge_type === "from_state") {
     const rawVal = config.number_state_field
       ? state[config.number_state_field]
       : undefined;
-    data = parseFloat(rawVal) || 0;
+    data = positionGaugeItems(
+      [
+        {
+          value: parseFloat(rawVal) || 0,
+          name: config.gauge_name || config.number_state_field || "Value",
+        },
+      ],
+      (item) => item,
+      config.gauge_style
+    );
   } else if (useAgg) {
     data = await loadAggregated(table, fields, where, config);
   } else {
@@ -1372,12 +1279,7 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
         config.pie_label_position === "outside"
       );
     if (pt === "funnel") return true;
-    if (
-      pt === "histogram" ||
-      pt === "gauge" ||
-      pt === "heatmap" ||
-      pt === "number"
-    )
+    if (pt === "histogram" || pt === "gauge" || pt === "heatmap")
       return false;
     return (
       config.show_legend === true ||
@@ -1423,7 +1325,7 @@ module.exports = {
   enable_copilot_viewgen: true,
   description:
     "Renders an interactive chart from a table — bar, pie, line, area, scatter, " +
-    "histogram, funnel, gauge, heatmap, or number. Use for any charting or data " +
+    "histogram, funnel, gauge, or heatmap. Use for any charting or data " +
     "visualisation requirement.",
   copilot_generate_view_prompt:
     "Set plot_type to the appropriate chart type. " +
