@@ -1,6 +1,6 @@
 const Workflow = require("@saltcorn/data/models/workflow");
 const Table = require("@saltcorn/data/models/table");
-const { div, script, domReady } = require("@saltcorn/markup/tags");
+const { div, script, domReady, text_attr } = require("@saltcorn/markup/tags");
 const {
   readState,
   stateFieldsToWhere,
@@ -24,6 +24,17 @@ const get_state_fields = async (table_id, viewname, config) => {
   return [];
 };
 
+const resolveOverride = (name, overrides) => {
+  if (!overrides?.length || name == null) return {};
+  const o = overrides.find((o) => o.series_name === String(name));
+  if (!o) return {};
+  return {
+    ...(o.color ? { color: o.color } : {}),
+    ...(o.text_color ? { text_color: o.text_color } : {}),
+    ...(o.label ? { label: o.label } : {}),
+  };
+};
+
 const buildChartScript = (
   data,
   {
@@ -35,17 +46,12 @@ const buildChartScript = (
     pie_donut,
     pie_label_position,
     donut_ring_width,
-    title,
     bar_axis_title,
     statistic,
     outcomes,
     lower_limit,
     upper_limit,
     show_legend,
-    mleft,
-    mright,
-    mtop,
-    mbottom,
     gauge_style,
     gauge_min,
     gauge_max,
@@ -53,14 +59,25 @@ const buildChartScript = (
     heatmap_max,
     heatmap_color_scale,
     factor_field,
+    filter_on_click,
     selected,
+    line_area_scatter_overrides,
+    bar_overrides,
+    funnel_overrides,
+    pie_overrides,
+    single_override_color,
+    single_override_label,
+    gauge_override_color,
+    gauge_override_label,
+    text_color,
+    number_ring_width,
   }
 ) => {
   // Builds an ECharts click handler that calls set_state_field/unset_state_field.
   // getIdExpr is a JS expression (string) that evaluates to the value to store in state;
   // for plain fields it's just 'label', for FK fields it resolves to the raw FK ID.
   const makeClickHandler = (getIdExpr) =>
-    factor_field
+    factor_field && filter_on_click !== false
       ? `myChart.on('click', (params) => {
           const key = ${JSON.stringify(factor_field)};
           const label = params.name;
@@ -75,95 +92,129 @@ const buildChartScript = (
           }
         });`
       : "";
-  const titleHeight = 30;
-  const titleObj = title
-    ? {
-        text: title,
-        ...(mtop != null && { top: mtop }),
-        ...(mleft != null && { left: mleft }),
-      }
-    : null;
-  const titleOption = titleObj ? `title: ${JSON.stringify(titleObj)},` : "";
-  const legendHeight = 50;
-  const legendObj = show_legend
-    ? { ...(mbottom != null && { bottom: mbottom }) }
-    : null;
-  const legendOption = legendObj ? `legend: ${JSON.stringify(legendObj)},` : "";
-  const gridObj = {
-    ...(mleft != null && { left: mleft }),
-    ...(mright != null && { right: mright }),
-    ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-    ...(mbottom != null && {
-      bottom: mbottom + (show_legend ? legendHeight : 0),
-    }),
-  };
-  const gridOption = Object.keys(gridObj).length
-    ? `grid: ${JSON.stringify(gridObj)},`
-    : "";
+  const hasLegend =
+    (show_legend === true || show_legend === "true" || show_legend === 1) &&
+    plot_type !== "histogram";
+  const legendOption = hasLegend
+    ? `legend: { bottom: 0 },`
+    : `legend: { show: false },`;
+  // Builds a legend option string with optional per-item textStyle.color.
+  // items: array of series names (strings) or { name, textStyle } objects.
+  const buildLegendOpt = (items) =>
+    hasLegend
+      ? `legend: { bottom: 0, data: ${JSON.stringify(items)} },`
+      : `legend: { show: false },`;
+  const gridOption = `grid: { left: 0, right: 0, top: 0, bottom: ${
+    hasLegend ? 50 : 0
+  }, containLabel: true },`;
   switch (plot_type) {
     case "line":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "line",
-          name: s.name,
-          smooth: !!smooth,
-          data: s.points,
-        }));
+        const lineLegendItems = [];
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          lineLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
+          return {
+            type: "line",
+            name,
+            smooth: !!smooth,
+            ...(ov.color && {
+              itemStyle: { color: ov.color },
+              lineStyle: { color: ov.color },
+            }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(lineLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
       }
       return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{ type: 'line', smooth: ${!!smooth}, data: ${JSON.stringify(
-        data
-      )} }]
+          series: [${JSON.stringify({
+            type: "line",
+            smooth: !!smooth,
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+              lineStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
     case "area":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "line",
-          name: s.name,
-          smooth: !!smooth,
-          areaStyle: {},
-          data: s.points,
-        }));
+        const areaLegendItems = [];
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          areaLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
+          return {
+            type: "line",
+            name,
+            smooth: !!smooth,
+            areaStyle: ov.color ? { color: ov.color } : {},
+            ...(ov.color && {
+              itemStyle: { color: ov.color },
+              lineStyle: { color: ov.color },
+            }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(areaLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
       }
       return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{
-            type: 'line',
-            smooth: ${!!smooth},
-            areaStyle: {},
-            data: ${JSON.stringify(data)}
-          }]
+          series: [${JSON.stringify({
+            type: "line",
+            smooth: !!smooth,
+            areaStyle: single_override_color
+              ? { color: single_override_color }
+              : {},
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+              lineStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
@@ -175,28 +226,41 @@ const buildChartScript = (
           : "label"
       );
       const horizontal = bar_orientation === "horizontal";
+      const barLegendItems = [];
       const seriesArr = JSON.stringify(
-        barSeries.map((s) => ({
-          type: "bar",
-          name: s.name,
-          stack: bar_stack ? "total" : undefined,
-          data: selected
-            ? s.values.map((v, i) => ({
-                value: v,
-                itemStyle: {
-                  opacity:
-                    "" + (categoryIds ? categoryIds[i] : categories[i]) ===
-                    "" + selected
-                      ? 1.0
-                      : 0.4,
-                },
-              }))
-            : s.values,
-        }))
+        barSeries.map((s) => {
+          const ov = resolveOverride(s.name, bar_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          barLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
+          return {
+            type: "bar",
+            name,
+            stack: bar_stack ? "total" : undefined,
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
+            data: selected
+              ? s.values.map((v, i) => ({
+                  value: v,
+                  itemStyle: {
+                    ...(ov.color && { color: ov.color }),
+                    opacity:
+                      "" + (categoryIds ? categoryIds[i] : categories[i]) ===
+                      "" + selected
+                        ? 1.0
+                        : 0.4,
+                  },
+                }))
+              : s.values,
+          };
+        })
       );
       const categoryAxis = JSON.stringify({
         type: "category",
         data: categories,
+        axisLabel: { interval: 0 },
       });
       const axisTitle =
         bar_axis_title ||
@@ -228,14 +292,14 @@ const buildChartScript = (
       return `
         var option = {
             ${selected != null ? "animation: false," : ""}
-            ${titleOption}
+
             ${gridOption}
           ${
             horizontal
               ? `xAxis: ${valueAxis}, yAxis: ${categoryAxis}`
               : `xAxis: ${categoryAxis}, yAxis: ${valueAxis}`
           },
-          ${legendOption}
+          ${buildLegendOpt(barLegendItems)}
           series: ${seriesArr}
         };
         myChart.setOption(option);
@@ -247,7 +311,7 @@ const buildChartScript = (
         "(params.data && params.data.fkId != null ? params.data.fkId : label)"
       );
       const pieData = JSON.stringify(
-        selected
+        (selected
           ? data.map((item) => ({
               ...item,
               ...("" + (item.fkId != null ? item.fkId : item.name) ===
@@ -256,80 +320,59 @@ const buildChartScript = (
                 : {}),
             }))
           : data
+        ).map((item) => {
+          const ov = resolveOverride(item.name, pie_overrides);
+          const _n = parseFloat(item.value);
+          const value = isFinite(_n) ? +_n.toFixed(2) : item.value;
+          return {
+            ...item,
+            value,
+            ...(ov.label && { name: ov.label }),
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            _ovTextColor: ov.text_color || null,
+          };
+        })
       );
       const radius = pie_donut
         ? `['${Math.round(
             70 - ((donut_ring_width || 50) / 100) * 70
           )}%', '70%']`
         : "'70%'";
-      const useLegend = pie_label_position === "legend";
-      const useOutside = pie_label_position === "outside";
+      const effectiveLabelPos =
+        pie_label_position === "outside" ? "legend" : pie_label_position;
+      const useLegend = effectiveLabelPos === "legend";
       const noAnimation = selected != null ? "animation: false," : "";
-      if (useOutside) {
-        return `
-          var option = {
-            ${noAnimation}
-            ${titleOption}
-            series: [{
-              type: 'pie',
-              selectedMode: 'single',
-              selectedOffset: 35,
-              radius: ${radius},
-              label: {
-                backgroundColor: '#F6F8FC',
-                borderColor: '#8C8D8E',
-                borderWidth: 1,
-                borderRadius: 4,
-                formatter: '  {b|{b}}\\n{hr|}\\n  {val|{c}} {per|{d}%} ',
-                rich: {
-                  hr: {
-                    borderColor: '#8C8D8E',
-                    width: '100%',
-                    borderWidth: 1,
-                    height: 0,
-                  },
-                  b: {
-                    color: '#4C5058',
-                    fontSize: 16,
-                    fontWeight: 'bold',
-                    lineHeight: 25,
-                  },
-                  val: {
-                    color: '#4C5058',
-                    fontSize: 16,
-                    lineHeight: 25,
-                  },
-                  per: {
-                    color: '#fff',
-                    fontSize: 14,
-                    backgroundColor: '#4C5058',
-                    borderRadius: 4,
-                    padding: [2, 3],
-                    lineHeight: 25,
-                  },
-                }
-              },
-              labelLine: { length: 30 },
-              data: ${pieData}
-            }]
-          };
-          myChart.setOption(option);
-          ${pieClickHandler}`;
-      }
-      const label = useLegend
-        ? { position: "inside", formatter: "{c} ({d}%)" }
-        : { position: "inside", formatter: "{b}\n{c} ({d}%)" };
+      const baseLabel = {
+        position: "inside",
+        formatter: useLegend ? "{c} ({d}%)" : "{b}\n{c} ({d}%)",
+        ...(text_color && { color: text_color }),
+      };
+      const label = baseLabel;
+      const pieLegendItems = [];
+      const pieDataWithLabels = JSON.parse(pieData).map((item) => {
+        const { _ovTextColor, ...rest } = item;
+        pieLegendItems.push(
+          _ovTextColor
+            ? { name: rest.name, textStyle: { color: _ovTextColor } }
+            : rest.name
+        );
+        if (!_ovTextColor) return rest;
+        return { ...rest, label: { ...baseLabel, color: _ovTextColor } };
+      });
+      const legendOpt = useLegend
+        ? `legend: { bottom: 0, data: ${JSON.stringify(pieLegendItems)} },`
+        : "legend: { show: false },";
       return `
         var option = {
             ${noAnimation}
-            ${titleOption}
-          ${useLegend ? "legend: {}," : ""}
+
+          ${legendOpt}
           series: [{
             type: 'pie',
             selectedMode: 'single',
             radius: ${radius},
             label: ${JSON.stringify(label)},
-            data: ${pieData}
+            data: ${JSON.stringify(pieDataWithLabels)}
           }]
         };
         myChart.setOption(option);
@@ -338,29 +381,48 @@ const buildChartScript = (
 
     case "scatter":
       if (plot_series === "multiple" || plot_series === "group_by_field") {
-        const seriesArr = data.map((s) => ({
-          type: "scatter",
-          name: s.name,
-          data: s.points,
-        }));
+        const scatterLegendItems = [];
+        const seriesArr = data.map((s) => {
+          const ov = resolveOverride(s.name, line_area_scatter_overrides);
+          const seriesTextColor = ov.text_color || text_color;
+          const name = ov.label || s.name;
+          scatterLegendItems.push(
+            ov.text_color ? { name, textStyle: { color: ov.text_color } } : name
+          );
+          return {
+            type: "scatter",
+            name,
+            ...(ov.color && { itemStyle: { color: ov.color } }),
+            ...(seriesTextColor && { label: { color: seriesTextColor } }),
+            data: s.points,
+          };
+        });
         return `
           var option = {
-            ${titleOption}
+
             ${gridOption}
             xAxis: { type: 'value' },
             yAxis: { type: 'value' },
-            ${legendOption}
+            ${buildLegendOpt(scatterLegendItems)}
             series: ${JSON.stringify(seriesArr)}
           };
           myChart.setOption(option);`;
-      }
-      return `
+      } else
+        return `
         var option = {
-            ${titleOption}
+
             ${gridOption}
+          ${legendOption}
           xAxis: { type: 'value' },
           yAxis: { type: 'value' },
-          series: [{ type: 'scatter', data: ${JSON.stringify(data)} }]
+          series: [${JSON.stringify({
+            type: "scatter",
+            ...(single_override_label && { name: single_override_label }),
+            ...(single_override_color && {
+              itemStyle: { color: single_override_color },
+            }),
+            data,
+          })}]
         };
         myChart.setOption(option);`;
 
@@ -368,8 +430,8 @@ const buildChartScript = (
       return `
         echarts.registerTransform(ecStat.transform.histogram);
         var option = {
-            ${titleOption}
             ${gridOption}
+            legend: { show: false },
           dataset: [
             { source: ${JSON.stringify(data)} },
             { transform: { type: 'ecStat:histogram', config: {} } }
@@ -389,23 +451,45 @@ const buildChartScript = (
     }
 
     case "funnel": {
-      const legendBottom = mbottom ?? 0;
+      const funnelBaseLabel = {
+        show: true,
+        position: "inside",
+        formatter: "{d}%",
+        ...(text_color && { color: text_color }),
+      };
+      const funnelLegendItems = [];
+      const funnelData = data.map((item) => {
+        const ov = resolveOverride(item.name, funnel_overrides);
+        const itemTextColor = ov.text_color;
+        const name = ov.label || item.name;
+        funnelLegendItems.push(
+          itemTextColor ? { name, textStyle: { color: itemTextColor } } : name
+        );
+        return {
+          ...item,
+          ...(ov.label && { name }),
+          ...(ov.color && { itemStyle: { color: ov.color } }),
+          ...(itemTextColor && {
+            label: { ...funnelBaseLabel, color: itemTextColor },
+          }),
+        };
+      });
       const funnelSeries = JSON.stringify({
         name: "Funnel",
         type: "funnel",
         sort: "descending",
         gap: 2,
-        ...(mleft != null && { left: mleft }),
-        ...(mright != null && { right: mright }),
-        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-        bottom: legendBottom + legendHeight,
-        label: { show: true, position: "inside", formatter: "{d}%" },
-        data,
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 50,
+        label: funnelBaseLabel,
+        data: funnelData,
       });
       return `
         var option = {
-          ${titleOption}
-          legend: { bottom: ${legendBottom} },
+
+          legend: { bottom: 0, data: ${JSON.stringify(funnelLegendItems)} },
           tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c} ({d}%)' },
           series: [${funnelSeries}]
         };
@@ -422,18 +506,11 @@ const buildChartScript = (
           : 10;
       const hmMin = heatmap_min ?? 0;
       const vmHeight = 60;
-      const vmBottom = mbottom ?? 0;
-      const hmGridObj = {
-        ...(mleft != null && { left: mleft }),
-        ...(mright != null && { right: mright }),
-        ...(mtop != null && { top: title ? mtop + titleHeight : mtop }),
-        ...(mbottom != null && { bottom: mbottom + vmHeight }),
-      };
       return `
         var option = {
-          ${titleOption}
+
           tooltip: { position: 'top' },
-          grid: ${JSON.stringify(hmGridObj)},
+          grid: { left: 0, right: 0, top: 0, bottom: ${vmHeight}, containLabel: true },
           xAxis: { type: 'category', data: ${JSON.stringify(
             xCategories
           )}, splitArea: { show: true } },
@@ -447,7 +524,7 @@ const buildChartScript = (
             calculable: true,
             orient: 'horizontal',
             left: 'center',
-            bottom: '${vmBottom}px',
+            bottom: 0,
             outOfRange: { color: ['#333'] }
           },
           series: [{
@@ -463,6 +540,16 @@ const buildChartScript = (
     }
 
     case "gauge": {
+      const gaugeData =
+        gauge_override_color || gauge_override_label
+          ? data.map((d) => ({
+              ...d,
+              ...(gauge_override_label && { name: gauge_override_label }),
+              ...(gauge_override_color && {
+                itemStyle: { color: gauge_override_color },
+              }),
+            }))
+          : data;
       const gaugeMin = gauge_min ?? 0;
       const gaugeMax = (() => {
         if (gauge_max != null) return gauge_max;
@@ -474,7 +561,7 @@ const buildChartScript = (
       if (gauge_style !== "pointer") {
         return `
           var option = {
-            ${titleOption}
+
             series: [{
               type: 'gauge',
               min: ${gaugeMin},
@@ -489,18 +576,18 @@ const buildChartScript = (
                 clip: false,
                 itemStyle: { borderWidth: 1, borderColor: '#464646' }
               },
-              axisLine: { lineStyle: { width: 40 } },
+              axisLine: { lineStyle: { width: ${parseInt(number_ring_width, 10) || 40} } },
               splitLine: { show: false, distance: 0, length: 10 },
               axisTick: { show: false },
               axisLabel: { show: false, distance: 50 },
-              data: ${JSON.stringify(data)},
+              data: ${JSON.stringify(gaugeData)},
               title: { fontSize: 14 },
               detail: {
                 width: 50,
                 height: 14,
                 fontSize: 14,
-                color: 'inherit',
-                borderColor: 'inherit',
+                color: ${JSON.stringify(text_color || "inherit")},
+                borderColor: ${JSON.stringify(text_color || "inherit")},
                 borderRadius: 20,
                 borderWidth: 1,
                 formatter: '{value}'
@@ -511,7 +598,7 @@ const buildChartScript = (
       }
       return `
         var option = {
-          ${titleOption}
+
           series: [{
             type: 'gauge',
             min: ${gaugeMin},
@@ -530,13 +617,13 @@ const buildChartScript = (
             },
             progress: { show: true, overlap: true, roundCap: true },
             axisLine: { roundCap: true },
-            data: ${JSON.stringify(data)},
+            data: ${JSON.stringify(gaugeData)},
             title: { fontSize: 14 },
             detail: {
               width: 40,
               height: 14,
               fontSize: 14,
-              color: '#fff',
+              color: ${JSON.stringify(text_color || "#fff")},
               backgroundColor: 'inherit',
               borderRadius: 3,
               formatter: '{value}'
@@ -607,6 +694,7 @@ const prepChartData = (
     heatmap_x_field,
     heatmap_y_field,
     heatmap_value_field,
+    bar_series_field,
   }
 ) => {
   const applyNullLabel = (v) =>
@@ -703,6 +791,27 @@ const prepChartData = (
         ),
       }));
     }
+    if (bar_series_field) {
+      const seriesVals = [
+        ...new Set(rows_.map((r) => String(r[bar_series_field] ?? "null"))),
+      ];
+      return {
+        categories: allCategories,
+        series: seriesVals.map((sv) => ({
+          name: sv,
+          values: allCategories.map((cat) =>
+            aggregateField(
+              rows_.filter(
+                (r) =>
+                  String(applyNullLabel(r[factor_field])) === cat &&
+                  String(r[bar_series_field] ?? "null") === sv
+              ),
+              outcomes?.[0]?.outcome_field
+            )
+          ),
+        })),
+      };
+    }
     const seriesData = (outcomes || []).map(({ outcome_field: of }) => ({
       name: of || "Count",
       values: allCategories.map((cat) =>
@@ -751,13 +860,16 @@ const loadAggregated = async (
     gauge_series,
     gauge_style,
     gauge_name,
+    bar_series_field,
   }
 ) => {
   const stat = (statistic || "count").toLowerCase();
   const isCount = (of_) => !of_ || of_ === "Row count" || stat === "count";
   const aggFor = (of_) =>
     isCount(of_) ? { aggregate: "count" } : { field: of_, aggregate: stat };
-  const outcomeFieldField = outcome_field ? table.getField(outcome_field) : null
+  const outcomeFieldField = outcome_field
+    ? table.getField(outcome_field)
+    : null;
   if (plot_type === "gauge") {
     if (gauge_type === "group_by_field" && gauge_group_field) {
       const aggRows = await table.aggregationQuery(
@@ -790,7 +902,11 @@ const loadAggregated = async (
       { where }
     );
     const items = [
-      { value: result.__val, name: gauge_name || outcomeFieldField?.label || outcome_field || "Value" },
+      {
+        value: result.__val,
+        name:
+          gauge_name || outcomeFieldField?.label || outcome_field || "Value",
+      },
     ];
     return positionGaugeItems(items, (item) => item, gauge_style);
   }
@@ -805,18 +921,6 @@ const loadAggregated = async (
   const factorIsFK = !!(
     factor_field_obj?.is_fkey && factor_field_obj.attributes.summary_field
   );
-  const allOutcomeFields =
-    plot_type === "bar"
-      ? (outcomes || []).map((o) => o.outcome_field)
-      : [outcome_field];
-  const aggregations = {};
-  for (const of_ of allOutcomeFields) {
-    aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
-  }
-  const aggRows = await table.aggregationQuery(aggregations, {
-    where,
-    groupBy: [factor_field],
-  });
   let labelMap = null;
   if (factorIsFK) {
     const refTable = await Table.findOne({
@@ -834,6 +938,77 @@ const loadAggregated = async (
     }
     return String(applyNL(fkId));
   };
+  if (plot_type === "bar" && bar_series_field) {
+    let seriesLabelMap = null;
+    const series_field_obj = fields.find((f) => f.name === bar_series_field);
+    if (
+      series_field_obj?.is_fkey &&
+      series_field_obj.attributes.summary_field
+    ) {
+      const refTable = await Table.findOne({
+        name: series_field_obj.reftable_name,
+      });
+      const summaryField = series_field_obj.attributes.summary_field;
+      const labelRows = refTable ? await refTable.getRows({}) : [];
+      seriesLabelMap = new Map(labelRows.map((r) => [r.id, r[summaryField]]));
+    }
+    const getSeriesLabel = (val) => {
+      if (seriesLabelMap) {
+        if (isMiss(val)) return "null";
+        const label = seriesLabelMap.get(val);
+        return label != null ? String(label) : String(val);
+      }
+      return String(val ?? "null");
+    };
+    const of_ = outcomes?.[0]?.outcome_field;
+    const aggKey = isCount(of_) ? "__count" : of_;
+    const bsAggRows = await table.aggregationQuery(
+      { [aggKey]: aggFor(of_) },
+      { where, groupBy: [factor_field, bar_series_field] }
+    );
+    const bsFiltered = show_missing
+      ? bsAggRows
+      : bsAggRows.filter((r) => !isMiss(r[factor_field]));
+    const getBsVal = (r) => (isCount(of_) ? r.__count : r[of_]);
+    const catSeen = new Set();
+    const categories = [];
+    for (const r of bsFiltered) {
+      const cat = getLabel(r[factor_field]);
+      if (!catSeen.has(cat)) {
+        categories.push(cat);
+        catSeen.add(cat);
+      }
+    }
+    const seriesVals = [
+      ...new Set(bsFiltered.map((r) => getSeriesLabel(r[bar_series_field]))),
+    ];
+    const lookup = new Map();
+    for (const r of bsFiltered) {
+      const key = `${getLabel(r[factor_field])}\x00${getSeriesLabel(
+        r[bar_series_field]
+      )}`;
+      lookup.set(key, getBsVal(r));
+    }
+    return {
+      categories,
+      series: seriesVals.map((sv) => ({
+        name: sv,
+        values: categories.map((cat) => lookup.get(`${cat}\x00${sv}`) ?? 0),
+      })),
+    };
+  }
+  const allOutcomeFields =
+    plot_type === "bar"
+      ? (outcomes || []).map((o) => o.outcome_field)
+      : [outcome_field];
+  const aggregations = {};
+  for (const of_ of allOutcomeFields) {
+    aggregations[isCount(of_) ? "__count" : of_] = aggFor(of_);
+  }
+  const aggRows = await table.aggregationQuery(aggregations, {
+    where,
+    groupBy: [factor_field],
+  });
   const filtered = show_missing
     ? aggRows
     : aggRows.filter((r) => !isMiss(r[factor_field]));
@@ -850,7 +1025,7 @@ const loadAggregated = async (
     categories,
     ...(factorIsFK && { categoryIds: filtered.map((r) => r[factor_field]) }),
     series: (outcomes || []).map(({ outcome_field: of_ }) => {
-      const ofField = of_ ? table.getField(of_) : null
+      const ofField = of_ ? table.getField(of_) : null;
       return {
         name: ofField?.label || of_ || "Count",
         values: filtered.map((r) => getVal(r, of_)),
@@ -880,6 +1055,7 @@ const loadRows = async (
     heatmap_x_field,
     heatmap_y_field,
     heatmap_value_field,
+    bar_series_field,
   }
 ) => {
   const joinFields = {};
@@ -961,6 +1137,7 @@ const loadRows = async (
       qfields.push(factor_field);
     }
     if (plot_type === "bar") {
+      if (bar_series_field) qfields.push(bar_series_field);
       for (const { outcome_field: of } of outcomes || []) {
         if (of && of !== "Row count") qfields.push(of);
       }
@@ -1043,7 +1220,21 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
     }`
   );
   let data;
-  if (useAgg) {
+  if (config.plot_type === "gauge" && config.gauge_type === "from_state") {
+    const rawVal = config.number_state_field
+      ? state[config.number_state_field]
+      : undefined;
+    data = positionGaugeItems(
+      [
+        {
+          value: parseFloat(rawVal) || 0,
+          name: config.gauge_name || config.number_state_field || "Value",
+        },
+      ],
+      (item) => item,
+      config.gauge_style
+    );
+  } else if (useAgg) {
     data = await loadAggregated(table, fields, where, config);
   } else {
     const { rows, joinedConfigKey, hmFieldMap } = await loadRows(
@@ -1062,18 +1253,67 @@ const run = async (table_id, viewname, config, state, { req }, queriesObj) => {
 
   const chartScript = buildChartScript(data, { ...config, selected });
   if (!chartScript) return "";
-
-  const divid = `echarts_${viewname}`;
-  return (
-    div({ id: divid, style: "width: 600px; height: 400px;" }) +
+  const divid = `echarts_${viewname}_${Math.random().toString(36).slice(2, 8)}`;
+  const { mleft, mright, mtop, mbottom } = config;
+  const paddingParts = [
+    mtop != null ? `padding-top:${mtop}px` : "",
+    mright != null ? `padding-right:${mright}px` : "",
+    mbottom != null ? `padding-bottom:${mbottom}px` : "",
+    mleft != null ? `padding-left:${mleft}px` : "",
+  ]
+    .filter(Boolean)
+    .join(";");
+  const heightStyle = config.chart_height
+    ? `height:${config.chart_height}px;`
+    : `aspect-ratio:2/1;min-height:150px;`;
+  const labelHtml = config.title
+    ? `<div style="display:block;margin:0;padding:0;line-height:normal;text-align:center;font-size:1rem;font-weight:600;color:#6b7280;letter-spacing:0.04em;">${text_attr(
+        config.title
+      )}</div>`
+    : "";
+  const chartHasLegend = (() => {
+    const pt = config.plot_type;
+    if (pt === "pie")
+      return (
+        config.pie_label_position === "legend" ||
+        config.pie_label_position === "outside"
+      );
+    if (pt === "funnel") return true;
+    if (pt === "histogram" || pt === "gauge" || pt === "heatmap")
+      return false;
+    return (
+      config.show_legend === true ||
+      config.show_legend === "true" ||
+      config.show_legend === 1
+    );
+  })();
+  const textColorScript = config.text_color
+    ? `myChart.setOption({ textStyle: { color: ${JSON.stringify(
+        config.text_color
+      )} }${
+        chartHasLegend
+          ? `, legend: { textStyle: { color: ${JSON.stringify(
+              config.text_color
+            )} } }`
+          : ""
+      } });`
+    : "";
+  const chartDiv =
+    div({
+      id: divid,
+      style: `display:block;width:100%;${heightStyle}`,
+    }) +
     script(
       domReady(`
-        var chartDom = document.getElementById('${divid}');
+        var chartDom = document.getElementById(${JSON.stringify(divid)});
         var myChart = echarts.init(chartDom);
+        new ResizeObserver(function() { myChart.resize(); }).observe(chartDom);
         ${chartScript}
+        ${textColorScript}
       `)
-    )
-  );
+    );
+  const inner = `<div style="display:inline-block;vertical-align:top;width:100%;">${labelHtml}${chartDiv}</div>`;
+  return paddingParts ? `<div style="${paddingParts}">${inner}</div>` : inner;
 };
 
 module.exports = {
@@ -1082,4 +1322,20 @@ module.exports = {
   get_state_fields,
   configuration_workflow,
   run,
+  enable_copilot_viewgen: true,
+  description:
+    "Renders an interactive chart from a table — bar, pie, line, area, scatter, " +
+    "histogram, funnel, gauge, or heatmap. Use for any charting or data " +
+    "visualisation requirement.",
+  copilot_generate_view_prompt:
+    "Set plot_type to the appropriate chart type. " +
+    "For category charts (bar/pie/funnel): set factor_field (the grouping field) and " +
+    "outcome_field (the numeric value field, or 'Row count'), and statistic " +
+    "('count'/'sum'/'avg'/'max'/'min'). " +
+    "For x/y charts (line/area/scatter): set x_field and y_field. " +
+    "For histogram: set histogram_field. " +
+    "For gauge: set outcome_field (and optionally gauge_min/gauge_max). " +
+    "For heatmap: set heatmap_x_field, heatmap_y_field, heatmap_value_field. " +
+    "Optionally set title, chart_height, include_fml (filter formula), show_legend, " +
+    "and filter_on_click: true to enable interactive click-filtering when factor_field is set.",
 };

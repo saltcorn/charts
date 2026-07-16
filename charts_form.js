@@ -5,6 +5,45 @@ const { code } = require("@saltcorn/markup/tags");
 
 const multiAblePlots = ["line", "area", "scatter"];
 
+const overrideFields = [
+  {
+    name: "series_name",
+    label: "Series name",
+    type: "String",
+    required: true,
+    sublabel: "Exact name of the series or data item to match",
+  },
+  {
+    name: "color",
+    label: "Color",
+    type: "String",
+    sublabel: "Hex color, e.g. #22ee55",
+    attributes: { asideNext: true },
+  },
+  {
+    name: "text_color",
+    label: "Text color",
+    type: "String",
+    sublabel: "Label color for this series, overrides global text color",
+  },
+  {
+    name: "label",
+    label: "Label",
+    type: "String",
+    sublabel: "Override display name",
+  },
+];
+
+const barOverrideFields = [
+  {
+    ...overrideFields[0],
+    label: "Series name",
+    sublabel:
+      "Exact series name to match — the outcome field name, or the series field value when Series field is set",
+  },
+  ...overrideFields.slice(1),
+];
+
 const buildChartsForm = async (context) => {
   const table = await Table.findOne({ id: context.table_id });
   const fields = await table.getFields();
@@ -206,12 +245,38 @@ const buildChartsForm = async (context) => {
         attributes: { options: factor_fields },
       },
       {
+        name: "bar_series_field",
+        label: "Series field",
+        type: "String",
+        sublabel:
+          "Optional: pivot bars into stacked series by this categorical field (e.g. finished, status).",
+        showIf: { plot_type: "bar" },
+        attributes: { options: ["", ...factor_fields] },
+      },
+      {
         name: "statistic",
         label: "Statistic",
         type: "String",
         required: true,
         showIf: { plot_type: ["bar", "pie", "funnel", "gauge"] },
         attributes: { options: ["Count", "Avg", "Sum", "Max", "Min"] },
+      },
+      {
+        name: "number_ring_width",
+        label: "Ring width (px)",
+        type: "Integer",
+        sublabel: "Thickness of the gauge arc. Default: 40.",
+        showIf: { plot_type: "gauge", gauge_type: "from_state" },
+        default: 40,
+      },
+      {
+        name: "number_state_field",
+        label: "State field",
+        type: "String",
+        required: true,
+        sublabel:
+          "Name of the state/URL parameter that contains the number to display.",
+        showIf: { plot_type: "gauge", gauge_type: "from_state" },
       },
       {
         name: "gauge_min",
@@ -230,7 +295,7 @@ const buildChartsForm = async (context) => {
       },
       {
         name: "gauge_style",
-        label: "Gauge style",
+        label: "Style",
         type: "String",
         showIf: { plot_type: "gauge" },
         attributes: {
@@ -250,6 +315,7 @@ const buildChartsForm = async (context) => {
             { label: "Single", name: "single" },
             { label: "Multiple", name: "multiple" },
             { label: "Group by field", name: "group_by_field" },
+            { label: "From state field", name: "from_state" },
           ],
         },
       },
@@ -265,7 +331,7 @@ const buildChartsForm = async (context) => {
         name: "gauge_name",
         label: "Gauge label",
         type: "String",
-        showIf: { plot_type: "gauge", gauge_type: "single" },
+        showIf: { plot_type: "gauge", gauge_type: ["single", "from_state"] },
       },
       new FieldRepeat({
         name: "gauge_series",
@@ -349,7 +415,6 @@ const buildChartsForm = async (context) => {
         attributes: {
           options: [
             { label: "Inside", name: "inside" },
-            { label: "Outside", name: "outside" },
             { label: "Legend", name: "legend" },
           ],
         },
@@ -393,12 +458,100 @@ const buildChartsForm = async (context) => {
         showIf: { show_missing: true },
       },
       {
+        name: "filter_on_click",
+        label: "Filter on click",
+        type: "Bool",
+        sublabel:
+          "Clicking a bar, slice, or funnel stage sets a page state filter.",
+        showIf: { plot_type: ["bar", "pie", "funnel"] },
+        default: true,
+      },
+      {
         name: "show_legend",
         label: "Show legend",
         type: "Bool",
-        showIf: { plot_type: ["line", "area", "scatter", "bar"] },
+        showIf: { plot_type: ["bar", "line", "area", "scatter"] },
       },
-      { input_type: "section_header", label: "Margins" },
+      { input_type: "section_header", label: "Overrides" },
+      {
+        name: "single_override_color",
+        label: "Color",
+        type: "String",
+        sublabel: "Hex color, e.g. #22ee55",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: "single",
+        },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "single_override_label",
+        label: "Label",
+        type: "String",
+        sublabel: "Override display name",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: "single",
+        },
+      },
+      new FieldRepeat({
+        name: "line_area_scatter_overrides",
+        label: "Override",
+        showIf: {
+          plot_type: ["line", "area", "scatter"],
+          plot_series: ["multiple", "group_by_field"],
+        },
+        fields: overrideFields,
+      }),
+      new FieldRepeat({
+        name: "bar_overrides",
+        label: "Override",
+        showIf: { plot_type: "bar" },
+        fields: barOverrideFields,
+      }),
+      new FieldRepeat({
+        name: "funnel_overrides",
+        label: "Override",
+        showIf: { plot_type: "funnel" },
+        fields: overrideFields,
+      }),
+      {
+        name: "gauge_override_color",
+        label: "Color",
+        type: "String",
+        sublabel: "Hex color, e.g. #22ee55",
+        showIf: { plot_type: "gauge" },
+        attributes: { asideNext: true },
+      },
+      {
+        name: "gauge_override_label",
+        label: "Label",
+        type: "String",
+        sublabel: "Override display name",
+        showIf: { plot_type: "gauge" },
+      },
+      new FieldRepeat({
+        name: "pie_overrides",
+        label: "Override",
+        showIf: { plot_type: "pie" },
+        fields: overrideFields,
+      }),
+      {
+        name: "text_color",
+        label: "Text color",
+        type: "String",
+        sublabel:
+          "Default label color for data labels (e.g. slice labels on pie). Can be overridden per series in the Overrides section. E.g. #333333",
+      },
+      { input_type: "section_header", label: "Dimensions" },
+      {
+        name: "chart_height",
+        label: "Height (px)",
+        type: "Integer",
+        sublabel: "Chart height in pixels. Default: 400.",
+        default: 400,
+      },
+      { input_type: "section_header", label: "Padding" },
       {
         name: "mleft",
         label: "Left (px)",

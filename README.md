@@ -9,11 +9,11 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Line** | Line chart with optional smooth curves. Supports single series, multiple series, or group-by-field. |
 | **Area** | Filled area chart. Same options as line. |
 | **Scatter** | Scatter plot. Supports single or multiple series. |
-| **Bar** | Vertical or horizontal bar chart. Supports multiple outcome fields, stacking, and axis title/limits. |
-| **Pie** | Pie or donut chart. Label position: inside, outside (rich label), or legend. |
+| **Bar** | Vertical or horizontal bar chart. Supports multiple outcome fields, stacking, series field pivoting, and axis title/limits. |
+| **Pie** | Pie or donut chart. Label position: inside or legend. |
 | **Histogram** | Histogram using ECharts statistical transforms. |
 | **Funnel** | Funnel chart with descending sort and percentage labels. |
-| **Gauge** | Gauge chart in arc or pointer style. Supports single value, multiple named values, or group-by-field. |
+| **Gauge** | Gauge chart in arc or pointer style. Supports single value, multiple named values, group-by-field, or a value read directly from a URL/state parameter. |
 | **Heatmap** | 2D heatmap with a continuous or stepped color scale. |
 
 ## Configuration options
@@ -22,11 +22,14 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 | Option | Description |
 |--------|-------------|
-| **Plot title** | Optional title rendered above the chart. |
+| **Plot title** | Optional title rendered as HTML above the chart. |
 | **Row inclusion formula** | JavaScript expression to filter rows (e.g. `status === "active"`). In scope: all table fields plus `user`, `year`, `month`, `day`, `today()`. |
 | **Show missing values** | Include rows where the factor field is null/empty. |
 | **Label for missing values** | Display label used for null/empty factor values when "Show missing values" is on. |
-| **Margins** | Left / right / top / bottom margins in pixels. |
+| **Filter on click** | When enabled, clicking a bar segment or pie slice sets a page-level state field. |
+| **Padding** | Left / right / top / bottom padding in pixels around the chart. |
+| **Chart height** | Fixed height in pixels. When omitted the chart uses a 2:1 aspect ratio with a 150 px minimum. |
+| **Text color** | Default color for data labels (e.g. slice labels on pie, gauge value text). Can be overridden per series in the Overrides section. |
 
 ### Line / Area / Scatter
 
@@ -42,8 +45,9 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 | Option | Description |
 |--------|-------------|
-| **Factor field** | Categorical field whose distinct values become the bars. |
-| **Outcomes** | One or more numeric fields (or "Row count") to aggregate. Each becomes a series. |
+| **Factor field** | Categorical field whose distinct values appear as groups along the X axis. |
+| **Series field** | Optional second categorical field that splits each bar group into separate series — one per distinct value. Enable **Stack series** to stack them. When this field is set, the first Outcome (or Row count if none) is used as the aggregated value; the Outcomes list is otherwise ignored. |
+| **Outcomes** | One or more numeric fields (or "Row count") to aggregate. Each becomes its own series (not used when Series field is set). |
 | **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
 | **Stack series** | Stack outcome series on top of each other. |
 | **Orientation** | Vertical (default) or horizontal. |
@@ -60,7 +64,7 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
 | **Donut** | Render as a donut. |
 | **Ring width (%)** | Thickness of the donut ring (1–100). |
-| **Label position** | Inside, outside (rich callout labels), or legend. |
+| **Label position** | Inside (labels on slices) or legend (labels in the legend, percentages on slices). |
 
 ### Histogram
 
@@ -80,13 +84,15 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 
 | Option | Description |
 |--------|-------------|
-| **Outcome field** | Numeric field (or "Row count") to aggregate. |
-| **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. |
+| **Gauge type** | How the value is sourced: **Single** (aggregate one field), **Multiple** (several named fields), **Group by field** (one gauge per group), or **From state field** (value from a URL/state parameter — no table aggregation). |
+| **Outcome field** | Numeric field (or "Row count") to aggregate. Not used for "From state field". |
+| **Statistic** | Aggregation: Count, Avg, Sum, Max, or Min. Not used for "From state field". |
 | **Min / Max value** | Value range for the gauge arc. Max defaults to automatic. |
-| **Gauge style** | Arcs (concentric progress rings) or Pointer (classic needle). |
-| **Gauge type** | Single value, multiple named values (FieldRepeat), or group-by-field. |
+| **Style** | Arcs (concentric progress rings) or Pointer (classic needle). |
 | **Group field** | Field whose distinct values each get their own gauge (group-by mode). |
-| **Gauge label** | Display name for the single-value gauge. |
+| **Gauge label** | Display name for single-value and from-state gauges. |
+| **State field** | Name of the URL/state parameter whose numeric value to display (from-state mode only). |
+| **Ring width (px)** | Thickness of the arc ring in pixels. Default: 40. (from-state mode only). |
 
 ### Heatmap
 
@@ -98,6 +104,19 @@ A [Saltcorn](https://github.com/saltcorn/saltcorn) plugin that renders interacti
 | **Color scale min** | Minimum value for the color scale (defaults to 0). |
 | **Color scale max** | Maximum value for the color scale (defaults to automatic). |
 | **Color scale type** | Gradient (smooth continuous transition) or Steps (discrete equal-width bands). |
+
+## Overrides
+
+Each chart type (except Histogram and Heatmap) has an **Overrides** section that lets you customize individual series or data items by name.
+
+| Field | Applies to | Description |
+|-------|-----------|-------------|
+| **Series name** | All | Exact name of the series or data item to match. |
+| **Color** | All | Fill / line color for the matched series (hex, e.g. `#22ee55`). |
+| **Text color** | All | Legend label color for the matched series. Also colors data-point labels when shown. |
+| **Label** | All | Override the display name shown in the legend. |
+
+Gauge charts have simplified overrides: **Color** (arc color) and **Label** (display name).
 
 ## State / filtering integration
 
@@ -113,9 +132,12 @@ Fields that reference another table via a foreign key are resolved to their summ
 
 - **Heatmap** X/Y axis: resolved via a JOIN in `getJoinedRows`.
 - **Bar / Pie / Funnel** factor field: resolved via a two-step lookup — `aggregationQuery` groups by raw FK ID, then the reference table is queried to build an ID → label map.
+- **Bar** series field: same two-step FK resolution.
 
 ## Technical notes
 
 - Charts are rendered client-side using the bundled `echarts.min.js` and `ecStat.min.js` in `public/`.
-- When the underlying table supports `aggregationQuery` (normal tables, not external), bar/pie/funnel/gauge use it for efficient DB-level aggregation. Other plot types always use `getJoinedRows`.
+- When the underlying table supports `aggregationQuery` (normal tables, not external), bar/pie/funnel/gauge use it for efficient DB-level aggregation. Gauge with `gauge_type: "from_state"` skips aggregation entirely and reads the value directly from page state. Other plot types always use `getJoinedRows`.
 - Zero values in heatmap cells are displayed as `"-"` and rendered in dark gray (via ECharts `outOfRange`) so they do not skew the color scale.
+- The plot title is rendered as an HTML element above the chart (not via ECharts) so it never takes up chart canvas space.
+- Legend is positioned at the bottom of the chart; when shown, the chart grid reserves 50 px of space to prevent overlap.

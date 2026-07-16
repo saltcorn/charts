@@ -1,8 +1,10 @@
 const { features } = require("@saltcorn/data/db/state");
+const appConstructorRules = require("./app-constructor-rules");
 
 module.exports = {
   sc_plugin_api_version: 1,
   plugin_name: "charts",
+  app_constructor_rules: appConstructorRules.join("\n"),
   headers: [
     {
       script: `/plugins/public/charts${
